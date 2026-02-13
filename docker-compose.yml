@@ -1,0 +1,65 @@
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: intelliview-db
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: intelliview
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+    container_name: intelliview-redis
+    ports:
+      - "6379:6379"
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: intelliview-qdrant
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - qdrant_data:/qdrant/storage
+
+  ai-service:
+    build: ./backend/ai_service
+    container_name: intelliview-ai
+    ports:
+      - "8001:8001"
+    environment:
+      - QDRANT_HOST=qdrant
+    depends_on:
+      - qdrant
+
+  gateway:
+    build: ./backend/gateway
+    container_name: intelliview-gateway
+    ports:
+      - "3000:3000"
+    environment:
+      - DB_HOST=postgres
+      - DB_USERNAME=user
+      - DB_PASSWORD=password
+      - DB_DATABASE=intelliview
+      - AI_SERVICE_URL=http://ai-service:8001
+    depends_on:
+      - postgres
+      - redis
+      - ai-service
+
+  frontend:
+    build: ./frontend
+    container_name: intelliview-frontend
+    ports:
+      - "5173:5173"
+    depends_on:
+      - gateway
+
+volumes:
+  postgres_data:
+  qdrant_data:
