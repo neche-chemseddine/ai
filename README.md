@@ -38,6 +38,11 @@ npm install
 npm run dev
 ```
 
+## Documentation
+- [Technical Specification](technical_specification.md)
+- [MVP Plan](mvp_plan.md)
+- [Core Workflows](WORKFLOWS.md)
+
 ## Phase 1 Progress
 - [x] Infrastructure Setup (Docker Config)
 - [x] CV Parsing (FastAPI + PyMuPDF)
