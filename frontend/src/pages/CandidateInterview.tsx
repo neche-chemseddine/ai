@@ -2,7 +2,14 @@ import React, { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { interviewService } from '../services/interview.service';
 import { io, Socket } from 'socket.io-client';
-import { Send, User, Bot, AlertCircle, Loader2 } from 'lucide-react';
+import { Send, Bot, AlertCircle, Info, ChevronLeft, Sparkles } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { ThemeToggle } from '@/components/theme-toggle';
 
 const CandidateInterview = () => {
   const { token } = useParams<{ token: string }>();
@@ -27,7 +34,6 @@ const CandidateInterview = () => {
       try {
         const data = await interviewService.getSession(token);
         setInterview(data);
-        // If there are existing messages, load them
         if (data.messages) {
           setMessages(data.messages.map((m: any) => ({
             role: m.role,
@@ -35,7 +41,6 @@ const CandidateInterview = () => {
           })));
         }
 
-        // Initialize Socket
         const socketUrl = import.meta.env.VITE_SOCKET_URL || 'http://localhost:3000';
         socketRef.current = io(socketUrl);
 
@@ -71,10 +76,8 @@ const CandidateInterview = () => {
     const text = inputText.trim();
     setInputText('');
 
-    // Add user message locally
     setMessages(prev => [...prev, { role: 'user', text }]);
 
-    // Send via socket
     socketRef.current.emit('candidate_message', {
       interviewId: interview.id,
       text: text
@@ -83,115 +86,139 @@ const CandidateInterview = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <Loader2 className="animate-spin text-primary-600" size={48} />
+      <div className="h-screen bg-background flex flex-col items-center justify-center space-y-4">
+        <div className="relative size-16">
+          <div className="absolute inset-0 border-4 border-primary/10 rounded-full" />
+          <div className="absolute inset-0 border-4 border-primary border-t-transparent rounded-full animate-spin" />
+        </div>
+        <p className="text-xs text-muted-foreground font-medium animate-pulse">Authenticating session...</p>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
-        <div className="max-w-md w-full bg-white p-8 rounded-2xl shadow-xl text-center">
-          <AlertCircle className="mx-auto text-red-500 mb-4" size={48} />
-          <h1 className="text-xl font-bold text-gray-800 mb-2">Access Denied</h1>
-          <p className="text-gray-600 mb-6">{error}</p>
-          <button 
-            onClick={() => navigate('/login')}
-            className="text-primary-600 font-medium hover:underline"
-          >
-            Go to Homepage
-          </button>
-        </div>
+      <div className="h-screen bg-background flex items-center justify-center p-6 text-center">
+        <Card variant="outline" className="max-w-md w-full">
+          <CardHeader>
+            <div className="flex justify-center mb-4 text-destructive">
+              <AlertCircle size={32} />
+            </div>
+            <CardTitle>Access Denied</CardTitle>
+            <CardDescription>{error}</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button variant="outline" onClick={() => navigate('/login')} className="w-full">
+              <ChevronLeft className="mr-2 size-4" />
+              Return to Homepage
+            </Button>
+          </CardContent>
+        </Card>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-100 flex flex-col">
+    <div className="h-screen bg-background flex flex-col overflow-hidden font-sans antialiased">
       {/* Header */}
-      <header className="bg-white border-b border-gray-200 p-4 sticky top-0 z-10">
-        <div className="max-w-4xl mx-auto flex justify-between items-center">
-          <div className="flex items-center space-x-3">
-            <div className="bg-primary-100 p-2 rounded-lg text-primary-600">
-              <Bot size={24} />
+      <header className="bg-background/80 backdrop-blur-md border-b border-border h-20 flex flex-shrink-0 z-20">
+        <div className="max-w-5xl mx-auto w-full px-6 flex justify-between items-center">
+          <div className="flex items-center space-x-4">
+            <div className="bg-primary size-10 rounded-xl flex items-center justify-center text-primary-foreground">
+              <Sparkles size={20} />
             </div>
             <div>
-              <h1 className="font-bold text-gray-800">Technical Interview</h1>
-              <p className="text-xs text-gray-500">Candidate: {interview?.candidate_name}</p>
+              <h1 className="font-bold text-lg tracking-tight">Technical Assessment</h1>
+              <div className="flex items-center space-x-2">
+                <p className="text-[10px] font-bold text-muted-foreground uppercase">Candidate: {interview?.candidate_name}</p>
+                <Badge variant="secondary">LIVE</Badge>
+              </div>
             </div>
           </div>
-          <div className="hidden sm:block">
-            <span className="text-xs font-medium text-green-600 bg-green-50 px-2 py-1 rounded">Session Active</span>
-          </div>
+          <ThemeToggle />
         </div>
       </header>
 
       {/* Chat Area */}
-      <main className="flex-1 overflow-y-auto p-4 sm:p-6">
-        <div className="max-w-4xl mx-auto space-y-6">
-          {messages.length === 0 && (
-            <div className="text-center py-10 text-gray-400">
-              <p>The interview hasn't started yet. Send a message to begin.</p>
-            </div>
-          )}
-          
-          {messages.map((msg, idx) => (
-            <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-              <div className={`flex max-w-[80%] ${msg.role === 'user' ? 'flex-row-reverse' : 'flex-row'} items-end`}>
-                <div className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center mb-1 ${
-                  msg.role === 'user' ? 'bg-primary-600 ml-2' : 'bg-gray-300 mr-2'
-                }`}>
-                  {msg.role === 'user' ? <User size={16} className="text-white" /> : <Bot size={16} className="text-gray-600" />}
+      <main className="flex-1 overflow-hidden flex flex-col relative bg-muted/30">
+        <ScrollArea className="flex-1 px-4 py-8 md:px-6">
+          <div className="max-w-4xl mx-auto space-y-10 pb-10">
+            {messages.length === 0 && (
+              <div className="flex flex-col items-center justify-center py-24 text-center">
+                <div className="bg-card size-20 rounded-3xl flex items-center justify-center shadow-xl mb-6 border">
+                  <Bot size={40} />
                 </div>
-                <div className={`p-4 rounded-2xl shadow-sm ${
-                  msg.role === 'user' 
-                    ? 'bg-primary-600 text-white rounded-br-none' 
-                    : 'bg-white text-gray-800 border border-gray-100 rounded-bl-none'
-                }`}>
-                  <p className="whitespace-pre-wrap text-sm leading-relaxed">{msg.text}</p>
+                <h3 className="text-xl font-bold">Welcome to your interview</h3>
+                <p className="text-sm text-muted-foreground mt-2 max-w-[300px]">
+                  The AI interviewer is ready. Send a message whenever you're prepared to begin.
+                </p>
+                <Button className="mt-8" onClick={() => {
+                  setInputText('Hello! I am ready to start the interview.');
+                }}>
+                  Start Conversation
+                </Button>
+              </div>
+            )}
+            
+            {messages.map((msg, idx) => (
+              <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'} animate-in fade-in slide-in-from-bottom-4 duration-500`}>
+                <div className={`flex max-w-[90%] md:max-w-[80%] ${msg.role === 'user' ? 'flex-row-reverse' : 'flex-row'} items-end group`}>
+                  <Avatar className={msg.role === 'user' ? 'ml-3' : 'mr-3'}>
+                    <AvatarFallback>{msg.role === 'user' ? 'ME' : 'AI'}</AvatarFallback>
+                  </Avatar>
+                  <div className={`px-5 py-4 rounded-2xl ${
+                    msg.role === 'user' 
+                      ? 'bg-primary text-primary-foreground rounded-br-none' 
+                      : 'bg-card text-card-foreground border rounded-bl-none'
+                  }`}>
+                    <p className="text-sm leading-relaxed whitespace-pre-wrap">{msg.text}</p>
+                  </div>
                 </div>
               </div>
-            </div>
-          ))}
+            ))}
 
-          {isTyping && (
-            <div className="flex justify-start items-center space-x-2 text-gray-400">
-              <div className="bg-gray-300 w-8 h-8 rounded-full flex items-center justify-center">
-                <Bot size={16} className="text-gray-600" />
+            {isTyping && (
+              <div className="flex justify-start items-end">
+                <Avatar className="mr-3">
+                  <AvatarFallback>AI</AvatarFallback>
+                </Avatar>
+                <div className="bg-card border px-5 py-4 rounded-2xl rounded-bl-none flex space-x-1.5">
+                  <div className="w-1.5 h-1.5 bg-primary/40 rounded-full animate-bounce"></div>
+                  <div className="w-1.5 h-1.5 bg-primary/40 rounded-full animate-bounce [animation-delay:150ms]"></div>
+                  <div className="w-1.5 h-1.5 bg-primary/40 rounded-full animate-bounce [animation-delay:300ms]"></div>
+                </div>
               </div>
-              <div className="flex space-x-1">
-                <div className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
-                <div className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
-                <div className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
-              </div>
-            </div>
-          )}
-          <div ref={messagesEndRef} />
-        </div>
+            )}
+            <div ref={messagesEndRef} />
+          </div>
+        </ScrollArea>
       </main>
 
       {/* Input Area */}
-      <footer className="bg-white border-t border-gray-200 p-4">
-        <form onSubmit={handleSend} className="max-w-4xl mx-auto flex space-x-4">
-          <input 
-            type="text"
-            value={inputText}
-            onChange={(e) => setInputText(e.target.value)}
-            placeholder="Type your answer here..."
-            className="flex-1 p-3 border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent bg-gray-50"
-          />
-          <button 
-            type="submit"
-            disabled={!inputText.trim()}
-            className="bg-primary-600 text-white p-3 rounded-xl hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed transition"
-          >
-            <Send size={20} />
-          </button>
-        </form>
-        <p className="text-center text-[10px] text-gray-400 mt-2">
-          Powered by IntelliView AI • Professional Assessment Session
-        </p>
+      <footer className="bg-background border-t border-border p-6 md:p-10 flex-shrink-0">
+        <div className="max-w-4xl mx-auto">
+          <form onSubmit={handleSend} className="relative">
+            <Input 
+              value={inputText}
+              onChange={(e) => setInputText(e.target.value)}
+              placeholder="Type your response here..."
+              className="h-16 pr-20"
+            />
+            <Button 
+              type="submit"
+              disabled={!inputText.trim()}
+              className="absolute right-2 top-2 h-12 w-12"
+            >
+              <Send size={20} />
+            </Button>
+          </form>
+          <div className="flex justify-between items-center mt-4 px-2 opacity-50">
+            <p className="text-[9px] font-bold uppercase tracking-widest">Secured Session</p>
+            <p className="text-[9px] font-bold uppercase tracking-widest flex items-center gap-1">
+              <Info size={10} /> Shift + Enter for new line
+            </p>
+          </div>
+        </div>
       </footer>
     </div>
   );

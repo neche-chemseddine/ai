@@ -4,6 +4,8 @@ import Dashboard from './pages/Dashboard';
 import Login from './pages/Login';
 import CandidateInterview from './pages/CandidateInterview';
 import { authService } from './services/auth.service';
+import { ThemeProvider } from './components/theme-provider';
+import { Toaster } from './components/ui/sonner';
 
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   const user = authService.getCurrentUser();
@@ -18,21 +20,24 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
 
 function App() {
   return (
-    <Router>
-      <Routes>
-        <Route 
-          path="/" 
-          element={
-            <ProtectedRoute>
-              <Dashboard />
-            </ProtectedRoute>
-          } 
-        />
-        <Route path="/login" element={<Login />} />
-        <Route path="/interview/:token" element={<CandidateInterview />} />
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
-    </Router>
+    <ThemeProvider defaultTheme="light" storageKey="vite-ui-theme">
+      <Router>
+        <Routes>
+          <Route 
+            path="/" 
+            element={
+              <ProtectedRoute>
+                <Dashboard />
+              </ProtectedRoute>
+            } 
+          />
+          <Route path="/login" element={<Login />} />
+          <Route path="/interview/:token" element={<CandidateInterview />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </Router>
+      <Toaster />
+    </ThemeProvider>
   );
 }
 
