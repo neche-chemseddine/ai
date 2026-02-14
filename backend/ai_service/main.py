@@ -158,6 +158,8 @@ async def generate_report(request: EvaluationRequest):
 Return only a JSON object with the following fields:
 - technical_score (1-10)
 - communication_score (1-10)
+- problem_solving_score (1-10)
+- experience_match_score (1-10)
 - strengths (list of strings)
 - weaknesses (list of strings)
 - summary (string)
@@ -181,27 +183,33 @@ TRANSCRIPT:
         pdf.add_page()
         pdf.set_font('Arial', 'B', 12)
         pdf.cell(0, 10, f"Candidate: {request.candidate_name}", 0, 1)
-        pdf.cell(0, 10, f"Technical Score: {evaluation.get('technical_score')}/10", 0, 1)
-        pdf.cell(0, 10, f"Communication Score: {evaluation.get('communication_score')}/10", 0, 1)
         
-        pdf.ln(5)
-        pdf.cell(0, 10, "Summary:", 0, 1)
-        pdf.set_font('Arial', '', 11)
-        pdf.multi_cell(0, 10, evaluation.get('summary', 'No summary provided.'))
+        # Score Grid
+        pdf.set_font('Arial', 'B', 10)
+        pdf.cell(90, 10, f"Technical Depth: {evaluation.get('technical_score')}/10", 1, 0)
+        pdf.cell(90, 10, f"Communication: {evaluation.get('communication_score')}/10", 1, 1)
+        pdf.cell(90, 10, f"Problem Solving: {evaluation.get('problem_solving_score')}/10", 1, 0)
+        pdf.cell(90, 10, f"Experience Match: {evaluation.get('experience_match_score')}/10", 1, 1)
         
         pdf.ln(5)
         pdf.set_font('Arial', 'B', 11)
-        pdf.cell(0, 10, "Strengths:", 0, 1)
+        pdf.cell(0, 10, "Executive Summary:", 0, 1)
+        pdf.set_font('Arial', '', 11)
+        pdf.multi_cell(0, 8, evaluation.get('summary', 'No summary provided.'))
+        
+        pdf.ln(5)
+        pdf.set_font('Arial', 'B', 11)
+        pdf.cell(0, 10, "Key Strengths:", 0, 1)
         pdf.set_font('Arial', '', 11)
         for s in evaluation.get('strengths', []):
-            pdf.cell(0, 10, f"- {s}", 0, 1)
+            pdf.cell(0, 8, f"- {s}", 0, 1)
             
         pdf.ln(5)
         pdf.set_font('Arial', 'B', 11)
-        pdf.cell(0, 10, "Weaknesses:", 0, 1)
+        pdf.cell(0, 10, "Areas for Improvement:", 0, 1)
         pdf.set_font('Arial', '', 11)
         for w in evaluation.get('weaknesses', []):
-            pdf.cell(0, 10, f"- {w}", 0, 1)
+            pdf.cell(0, 8, f"- {w}", 0, 1)
 
         report_filename = f"report_{uuid.uuid4()}.pdf"
         report_path = os.path.join(REPORTS_DIR, report_filename)
