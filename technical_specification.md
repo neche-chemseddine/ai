@@ -53,13 +53,17 @@ CREATE TABLE messages (
 
 ## 5. WebSocket Design (Interview Session)
 *   **EVENT: candidate_message**: Sent by client when candidate submits answer.
+*   **EVENT: start_interview**: Sent by client when candidate clicks "Start Interview".
 *   **EVENT: interviewer_typing**: Sent by server to show activity.
 *   **EVENT: interviewer_message**: The LLM-generated response.
 *   **EVENT: session_completed**: Emitted when the question limit is reached.
 *   **Logic Flow:**
-    1. Gateway receives message and increments `question_count`.
-    2. If `count < limit`, requests next question.
-    3. If `count == limit`, requests a concluding message and triggers Report Generation.
+    1.  **Preparation:** Candidate connects to WebSocket (no automated message).
+    2.  **Trigger:** Candidate emits `start_interview`.
+    3.  **Initiation:** Gateway calls AI Service with `is_init: true`, saves the response, and emits the first message.
+    4.  **Standard Loop:** Gateway receives `candidate_message` and increments `question_count`.
+    5.  **Turn-Taking:** If `count < limit`, requests next question from AI Service.
+    6.  **Termination:** If `count == limit`, requests a concluding message and triggers Report Generation.
 
 ## 6. CV Processing Pipeline
 1.  **Extract:** Python service extracts text from PDF using `PyMuPDF`.

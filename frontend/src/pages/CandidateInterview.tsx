@@ -18,6 +18,7 @@ const CandidateInterview = () => {
   const [messages, setMessages] = useState<any[]>([]);
   const [inputText, setInputText] = useState('');
   const [isTyping, setIsTyping] = useState(false);
+  const [hasStarted, setHasStarted] = useState(false);
   const [isSessionCompleted, setIsSessionCompleted] = useState(false);
   const [isGeneratingReport, setIsGeneratingReport] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -37,6 +38,10 @@ const CandidateInterview = () => {
         const data = await interviewService.getSession(token);
         setInterview(data);
         
+        if (data.status === 'completed' || (data.messages && data.messages.length > 0)) {
+          setHasStarted(true);
+        }
+
         if (data.status === 'completed') {
           setIsSessionCompleted(true);
         }
@@ -49,23 +54,24 @@ const CandidateInterview = () => {
         }
 
         const socketUrl = import.meta.env.VITE_SOCKET_URL || 'http://localhost:3000';
-        socketRef.current = io(socketUrl);
+        const socket = io(socketUrl);
+        socketRef.current = socket;
 
-        socketRef.current.on('interviewer_message', (data) => {
+        socket.on('interviewer_message', (data) => {
           setMessages(prev => [...prev, { role: 'assistant', text: data.text }]);
           setIsTyping(false);
         });
 
-        socketRef.current.on('interviewer_typing', (data) => {
+        socket.on('interviewer_typing', (data) => {
           setIsTyping(data.typing);
         });
 
-        socketRef.current.on('session_completed', () => {
+        socket.on('session_completed', () => {
           setIsSessionCompleted(true);
           setIsGeneratingReport(true);
         });
 
-        socketRef.current.on('report_ready', () => {
+        socket.on('report_ready', () => {
           setIsGeneratingReport(false);
         });
 
@@ -85,9 +91,16 @@ const CandidateInterview = () => {
 
   useEffect(scrollToBottom, [messages, isTyping]);
 
+  const handleStartInterview = () => {
+    if (socketRef.current && interview) {
+      setHasStarted(true);
+      socketRef.current.emit('start_interview', { interviewId: interview.id });
+    }
+  };
+
   const handleSend = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!inputText.trim() || !socketRef.current || !interview || isSessionCompleted) return;
+    if (!inputText.trim() || !socketRef.current || !interview || isSessionCompleted || !hasStarted) return;
 
     const text = inputText.trim();
     setInputText('');
@@ -159,19 +172,17 @@ const CandidateInterview = () => {
       <main className="flex-1 overflow-hidden flex flex-col relative bg-muted/30">
         <ScrollArea className="flex-1 px-4 py-8 md:px-6">
           <div className="max-w-4xl mx-auto space-y-10 pb-10">
-            {messages.length === 0 && !isSessionCompleted && (
-              <div className="flex flex-col items-center justify-center py-24 text-center">
+            {!hasStarted && !isSessionCompleted && (
+              <div className="flex flex-col items-center justify-center py-24 text-center animate-in fade-in zoom-in duration-700">
                 <div className="bg-card size-20 rounded-3xl flex items-center justify-center shadow-xl mb-6 border">
-                  <Bot size={40} />
+                  <Bot size={40} className="text-primary" />
                 </div>
-                <h3 className="text-xl font-bold">Welcome to your interview</h3>
+                <h3 className="text-xl font-bold">Ready to start?</h3>
                 <p className="text-sm text-muted-foreground mt-2 max-w-[300px]">
-                  The AI interviewer is ready. Send a message whenever you're prepared to begin.
+                  Once you click the button, the AI interviewer will begin the session.
                 </p>
-                <Button className="mt-8" onClick={() => {
-                  setInputText('Hello! I am ready to start the interview.');
-                }}>
-                  Start Conversation
+                <Button className="mt-8" onClick={handleStartInterview}>
+                  Start Interview
                 </Button>
               </div>
             )}
@@ -242,13 +253,13 @@ const CandidateInterview = () => {
             <Input 
               value={inputText}
               onChange={(e) => setInputText(e.target.value)}
-              placeholder={isSessionCompleted ? "Interview session closed" : "Type your response here..."}
+              placeholder={isSessionCompleted ? "Interview session closed" : (!hasStarted ? "Click Start to begin" : "Type your response here...")}
               className="h-16 pr-20"
-              disabled={isSessionCompleted}
+              disabled={isSessionCompleted || !hasStarted}
             />
             <Button 
               type="submit"
-              disabled={!inputText.trim() || isSessionCompleted}
+              disabled={!inputText.trim() || isSessionCompleted || !hasStarted}
               className="absolute right-2 top-2 h-12 w-12"
             >
               <Send size={20} />

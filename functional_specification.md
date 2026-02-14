@@ -21,6 +21,10 @@
 
 ### 2.3. AI Interview Engine (The "Interviewer")
 *   **Description:** Real-time chat interface where AI asks questions and reacts to answers.
+*   **Candidate-Triggered Initiation:**
+    -   The interview starts only when the candidate clicks the "Start Interview" button.
+    -   Upon clicking, the AI immediately takes the lead by sending a personalized greeting and the first technical question.
+    -   This ensures the candidate is prepared and focused before the assessment begins.
 *   **Structured Flow:**
     -   **Single Question Rule:** The AI must only ask one technical question at a time.
     -   **Progress Tracking:** The system tracks the number of questions answered.

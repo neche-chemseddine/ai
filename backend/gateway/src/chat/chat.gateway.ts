@@ -46,6 +46,60 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     console.log(`Client disconnected: ${client.id}`);
   }
 
+  @SubscribeMessage('start_interview')
+  async handleStart(
+    @MessageBody() data: { interviewId: string },
+    @ConnectedSocket() client: Socket,
+  ) {
+    const interview = await this.interviewRepository.findOne({ 
+      where: { id: data.interviewId },
+      relations: ['messages'] 
+    });
+
+    if (!interview) return;
+
+    // If it's a new interview (no messages yet), trigger the AI opener
+    if (interview.messages.length === 0 && interview.status !== 'completed') {
+      interview.status = 'active';
+      await this.interviewRepository.save(interview);
+
+      client.emit('interviewer_typing', { typing: true });
+
+      const aiServiceUrl = this.configService.get<string>('AI_SERVICE_URL', 'http://localhost:8001');
+      const cv_session_id = (interview.rubric as any)?.cv_session_id;
+
+      try {
+        const response = await firstValueFrom(
+          this.httpService.post(`${aiServiceUrl}/v1/chat/generate`, {
+            cv_session_id: cv_session_id,
+            message: "INIT_INTERVIEW",
+            is_init: true,
+            history: []
+          })
+        );
+
+        const aiText = response.data.response;
+        
+        const aiMsg = this.messageRepository.create({
+          interview,
+          role: 'assistant',
+          content: aiText,
+        });
+        await this.messageRepository.save(aiMsg);
+
+        client.emit('interviewer_message', {
+          interviewId: data.interviewId,
+          text: aiText,
+          role: 'assistant',
+        });
+      } catch (error) {
+        console.error('Error in handleJoin AI call:', error.message);
+      } finally {
+        client.emit('interviewer_typing', { typing: false });
+      }
+    }
+  }
+
   @SubscribeMessage('candidate_message')
   async handleMessage(
     @MessageBody() data: { interviewId: string; text: string },

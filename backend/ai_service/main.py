@@ -38,6 +38,7 @@ class ChatRequest(BaseModel):
     cv_session_id: str
     message: str
     history: List[dict] = []
+    is_init: bool = False
 
 class EvaluationRequest(BaseModel):
     candidate_name: str
@@ -131,7 +132,17 @@ async def generate_response(request: ChatRequest):
         
         context = "\n".join([hit.payload["text"] for hit in search_result])
         
-        system_prompt = f"""You are an expert technical interviewer conducting a live coding interview.
+        if request.is_init:
+            system_prompt = f"""You are an expert technical interviewer. 
+Start the interview by greeting the candidate professionally and asking their FIRST technical question based on their CV context.
+Keep it welcoming but rigorous.
+
+CV CONTEXT:
+{context}
+"""
+            full_prompt = f"<s>[INST] {system_prompt} [/INST]"
+        else:
+            system_prompt = f"""You are an expert technical interviewer conducting a live coding interview.
 Your goal is to assess the candidate's technical depth, problem-solving skills, and communication.
 
 Guidelines:
@@ -144,7 +155,7 @@ Guidelines:
 CV CONTEXT:
 {context}
 """
-        full_prompt = f"<s>[INST] {system_prompt}\n\nCandidate: {request.message} [/INST]"
+            full_prompt = f"<s>[INST] {system_prompt}\n\nCandidate: {request.message} [/INST]"
         
         output = llm(full_prompt, max_tokens=256, stop=["[INST]", "</s>"], echo=False)
         response_text = output["choices"][0]["text"].strip()
