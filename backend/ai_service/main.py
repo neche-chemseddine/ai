@@ -27,7 +27,7 @@ MODEL_PATH = hf_hub_download(
     repo_id="TheBloke/Mistral-7B-Instruct-v0.2-GGUF",
     filename="mistral-7b-instruct-v0.2.Q4_K_M.gguf"
 )
-llm = Llama(model_path=MODEL_PATH, n_ctx=2048, n_threads=4)
+llm = Llama(model_path=MODEL_PATH, n_ctx=4096, n_threads=4)
 print("LLM Loaded.")
 
 COLLECTION_NAME = "cv_chunks"
@@ -115,7 +115,19 @@ async def parse_cv(file: UploadFile = File(...)):
 @app.post("/v1/chat/generate")
 async def generate_response(request: ChatRequest):
     try:
-        query_vector = embed_model.encode(request.message).tolist()
+        # Context Retrieval Strategy
+        # If we have history, use the last AI question + current user message for better context
+        search_query = request.message
+        if request.history and len(request.history) > 0:
+            last_msg = request.history[-1]
+            if last_msg.get("role") == "assistant":
+                content = last_msg.get("content")
+                if content:
+                     search_query = f"{content} {request.message}"
+        
+        print(f"DEBUG: Search Query: {search_query}", flush=True)
+
+        query_vector = embed_model.encode(search_query).tolist()
         search_result = qdrant_client.query_points(
             collection_name=COLLECTION_NAME,
             query=query_vector,
@@ -133,35 +145,55 @@ async def generate_response(request: ChatRequest):
         context = "\n".join([hit.payload["text"] for hit in search_result])
         
         if request.is_init:
-            system_prompt = f"""You are an expert technical interviewer. 
-Start the interview by greeting the candidate professionally and asking their FIRST technical question based on their CV context.
-Keep it welcoming but rigorous.
+            system_prompt = f"""You are a strict technical interviewer. 
+Greet the candidate and ask ONE specific technical question from their CV context.
+Be brief (max 2 sentences).
+DO NOT include any notes, thoughts, or meta-commentary.
 
 CV CONTEXT:
 {context}
 """
             full_prompt = f"<s>[INST] {system_prompt} [/INST]"
         else:
-            system_prompt = f"""You are an expert technical interviewer conducting a live coding interview.
-Your goal is to assess the candidate's technical depth, problem-solving skills, and communication.
+            system_prompt = f"""You are a strict technical interviewer. 
 
-Guidelines:
-1.  **One Question at a Time:** Ask exactly one technical question per turn. Never combine multiple questions.
-2.  **Be Conversational:** Maintain a professional yet approachable tone.
-3.  **Dig Deeper:** If the candidate gives a surface-level answer, ask a follow-up question to probe their understanding.
-4.  **Handle "I don't know":** If the candidate doesn't know an answer, guide them gently or move to a related topic.
-5.  **Be Concise:** Keep your responses brief (1-3 sentences) to allow the candidate to speak more.
+Rules:
+1. You are leading the interview. DO NOT answer any questions asked by the candidate.
+2. If the candidate asks a question, refuses to answer, or is off-topic, firmly redirect them to your original question.
+3. Ask exactly ONE question per turn.
+4. Do not repeat questions you have already asked in the history.
+5. Be extremely concise (1-2 sentences).
+6. NEVER include meta-commentary like "Note:", "(Note: ...)", or explanations about your rules.
 
 CV CONTEXT:
 {context}
 """
-            full_prompt = f"<s>[INST] {system_prompt}\n\nCandidate: {request.message} [/INST]"
+            # Build history string
+            conversation_history = ""
+            if request.history:
+                for msg in request.history:
+                    role = msg.get("role")
+                    content = msg.get("content")
+                    if role == "assistant":
+                        conversation_history += f"{content} </s>"
+                    elif role == "user":
+                        conversation_history += f"<s>[INST] {content} [/INST]"
+            
+            # Construct full prompt with history
+            full_prompt = f"<s>[INST] {system_prompt} [/INST] {conversation_history} <s>[INST] {request.message} [/INST]"
         
-        output = llm(full_prompt, max_tokens=256, stop=["[INST]", "</s>"], echo=False)
+        print(f"DEBUG: Full Prompt Length: {len(full_prompt)}", flush=True)
+        output = llm(full_prompt, max_tokens=128, stop=["[INST]", "</s>", "Note:", "("], echo=False)
         response_text = output["choices"][0]["text"].strip()
+        
+        # Post-processing to remove any accidental leakage if LLM ignores 'stop'
+        response_text = re.sub(r"\(?Note:.*", "", response_text, flags=re.IGNORECASE).strip()
         
         return {"response": response_text}
     except Exception as e:
+        import traceback
+        traceback.print_exc()
+        print(f"Error in generate_response: {e}", flush=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/v1/report/generate")
@@ -171,58 +203,88 @@ async def generate_report(request: EvaluationRequest):
         transcript_text = "\n".join([f"{m['role'].upper()}: {m['content']}" for m in request.transcript])
         
         # 2. Ask LLM to evaluate
-        eval_prompt = f"""<s>[INST] Analyze the following technical interview transcript and provide a structured, evidence-based evaluation.
+        eval_prompt = f"""<s>[INST] Evaluate this technical interview transcript. Return ONLY a JSON object.
 
-**Rubric Guidelines:**
-- **Technical Score (1-10):** 
-    - 9-10: Deep understanding, optimal solutions, mentions trade-offs.
-    - 6-8: Competent, correct answers but lacks depth.
-    - 1-5: Incorrect, vague, or "I don't know" answers.
-- **Communication Score (1-10):** Clarity, conciseness, and ability to explain complex topics.
-- **Problem Solving (1-10):** Approach to unknown problems, debugging mindset.
-- **Experience Match (1-10):** Alignment with modern standards and practices shown in transcript.
-
-**Instructions:**
-- Be critical. Do not give high scores (8+) unless explicitly demonstrated.
-- Cite specific examples from the transcript in your strengths/weaknesses.
-- If the transcript is short or the candidate is evasive, lower the scores accordingly.
-
-Return only a valid JSON object with the following REQUIRED fields:
-- technical_score (integer)
-- communication_score (integer)
-- problem_solving_score (integer)
-- experience_match_score (integer)
-- strengths (list of strings)
-- weaknesses (list of strings)
-- summary (string)
+**STRICT Evaluation Rules:**
+1. Be extremely critical. 
+2. If the candidate repeated the same answer or information, penalize heavily in all scores.
+3. If the candidate asked questions back to the interviewer instead of answering, give a 0 for technical and problem solving scores for those turns.
+4. If the candidate used generic/vague buzzwords without explaining 'how' or 'why', give low technical scores (1-3).
+5. High scores (8-10) require specific, unique technical details for EVERY answer.
+6. Evaluate ONLY what is demonstrated in the TRANSCRIPT, not what is in the CV.
 
 TRANSCRIPT:
 {transcript_text}
+
+JSON Format:
+{{
+    "technical_score": int,
+    "communication_score": int,
+    "problem_solving_score": int,
+    "experience_match_score": int,
+    "strengths": ["..."],
+    "weaknesses": ["..."],
+    "summary": "..."
+}}
 [/INST]"""
 
-        output = llm(eval_prompt, max_tokens=1024, stop=["</s>"], echo=False)
+        output = llm(eval_prompt, max_tokens=1536, stop=["</s>"], echo=False)
         eval_json_str = output["choices"][0]["text"].strip()
         print(f"DEBUG: Raw LLM Output: {eval_json_str}", flush=True)
         
-        # Extract JSON from potential prose or markdown blocks
-        match = re.search(r'\{.*\}', eval_json_str, re.DOTALL)
-        if match:
-            try:
-                evaluation = json.loads(match.group())
-                # Enforce defaults for all required fields
-                evaluation.setdefault('technical_score', 0)
-                evaluation.setdefault('communication_score', 0)
-                evaluation.setdefault('problem_solving_score', 0)
-                evaluation.setdefault('experience_match_score', 0)
-                evaluation.setdefault('strengths', [])
-                evaluation.setdefault('weaknesses', [])
-                evaluation.setdefault('summary', "No summary provided.")
-            except json.JSONDecodeError:
-                 # Try to fix common JSON errors if needed, or just fail gracefully
-                 print(f"JSON Decode Error on: {match.group()}", flush=True)
-                 raise ValueError("Could not parse LLM evaluation as JSON")
-        else:
-            raise ValueError("Could not find JSON object in LLM output")
+        # Robust JSON extraction
+        try:
+            start_idx = eval_json_str.find('{')
+            end_idx = eval_json_str.rfind('}')
+            
+            if start_idx != -1:
+                if end_idx == -1 or end_idx < start_idx:
+                    # Try to close it if it's truncated
+                    json_str = eval_json_str[start_idx:] + '\n"}"' 
+                    # This is a bit hacky, better to just try parsing what we have or fix common issues
+                else:
+                    json_str = eval_json_str[start_idx:end_idx+1]
+                
+                # Attempt to parse
+                try:
+                    evaluation = json.loads(json_str)
+                except json.JSONDecodeError:
+                    # If it failed, maybe it's missing the closing brace
+                    if not json_str.strip().endswith('}'):
+                        try:
+                            evaluation = json.loads(json_str + '}')
+                        except:
+                            # Try one more: close any open strings and then the object
+                            try:
+                                evaluation = json.loads(json_str + '"] }')
+                            except:
+                                raise ValueError("JSON truncated beyond simple repair")
+                    else:
+                        raise
+            else:
+                 raise ValueError("Could not find { in LLM output")
+        except Exception as e:
+            print(f"JSON Extraction Error: {e}. Raw: {eval_json_str}")
+            # Fallback to a failure evaluation instead of 500
+            evaluation = {
+                "technical_score": 1,
+                "communication_score": 1,
+                "problem_solving_score": 1,
+                "experience_match_score": 1,
+                "strengths": ["N/A"],
+                "weaknesses": ["System failed to parse evaluation"],
+                "summary": "The evaluation could not be parsed due to an LLM output error."
+            }
+
+
+        # Enforce defaults for all required fields
+        evaluation.setdefault('technical_score', 1)
+        evaluation.setdefault('communication_score', 1)
+        evaluation.setdefault('problem_solving_score', 1)
+        evaluation.setdefault('experience_match_score', 1)
+        evaluation.setdefault('strengths', ["Insufficient data"])
+        evaluation.setdefault('weaknesses', ["Candidate provided insufficient or vague responses."])
+        evaluation.setdefault('summary', "The interview was too short or vague to provide a meaningful evaluation.")
 
         # 3. Generate PDF
         pdf = ReportPDF()
