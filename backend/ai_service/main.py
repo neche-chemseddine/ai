@@ -37,6 +37,7 @@ os.makedirs(REPORTS_DIR, exist_ok=True)
 class ChatRequest(BaseModel):
     cv_session_id: str
     message: str
+    cv_summary: Optional[str] = None
     history: List[dict] = []
     is_init: bool = False
 
@@ -102,10 +103,16 @@ async def parse_cv(file: UploadFile = File(...)):
             points=points
         )
         
+        # Generate CV Summary for persistent context
+        summary_prompt = f"<s>[INST] Summarize this CV in 3-4 bullet points focusing on technical stack and seniority. Limit to 100 words.\n\nCV TEXT:\n{text[:2000]} [/INST]"
+        summary_output = llm(summary_prompt, max_tokens=200, stop=["</s>"], echo=False)
+        cv_summary = summary_output["choices"][0]["text"].strip()
+
         return {
             "filename": file.filename,
             "cv_session_id": cv_session_id,
             "chunk_count": len(chunks),
+            "cv_summary": cv_summary,
             "preview": chunks[:3]
         }
     except Exception as e:
@@ -126,14 +133,18 @@ async def generate_response(request: ChatRequest):
         else:
             phase = "SCENARIO (Problem solving & architecture)"
 
-        # 2. Context Retrieval Strategy
-        # Search query combines the last AI question + current user message for better context
+        # 2. Context Retrieval Strategy (Query Expansion)
         search_query = request.message
         if request.history:
-            last_msgs = [m.get("content", "") for m in request.history[-2:]]
-            search_query = f"{' '.join(last_msgs)} {request.message}"
-        
-        print(f"DEBUG: Phase: {phase} | Search Query: {search_query}", flush=True)
+            # Ask LLM to generate a search query for the vector DB based on history
+            expansion_prompt = f"""<s>[INST] Based on the following conversation, generate a short (3-5 words) search query to find relevant technical details in the candidate's CV.
+History:
+{request.history[-2:]}
+Latest: {request.message}
+Query: [/INST]"""
+            expansion_output = llm(expansion_prompt, max_tokens=20, stop=["\n"], echo=False)
+            search_query = expansion_output["choices"][0]["text"].strip().strip('"')
+            print(f"DEBUG: Expanded Search Query: {search_query}", flush=True)
 
         query_vector = embed_model.encode(search_query).tolist()
         search_result = qdrant_client.query_points(
@@ -153,6 +164,7 @@ async def generate_response(request: ChatRequest):
         context = "\n".join([f"- {hit.payload['text']}" for hit in search_result])
         
         # 3. System Prompt Construction
+        cv_summary_text = f"\nCV SUMMARY (Holistic View):\n{request.cv_summary}" if request.cv_summary else ""
         system_prompt = f"""You are a Senior Principal Engineer conducting a strict technical interview.
 Current Phase: {phase}
 
@@ -162,8 +174,9 @@ CORE RULES:
 3. NO FLUFF: Be extremely concise (max 2 sentences). No "Great", "Excellent", or "I see".
 4. REDIRECT: If the candidate is off-topic or asks you a question, firmly bring them back to your technical question.
 5. NEVER reveal you are an AI. Never include meta-commentary or notes.
+{cv_summary_text}
 
-CV CONTEXT (Use this to ground your questions):
+CV CONTEXT (Specific details for current turn):
 {context}
 """
 
@@ -231,6 +244,7 @@ Output ONLY a valid JSON object in this format:
     "experience_match_score": int,
     "strengths": ["Strength description [Quote from transcript]"],
     "weaknesses": ["Weakness description [Quote from transcript]"],
+    "proven_skills": ["Skill name - Evidence level (Low/Med/High)"],
     "summary": "Realistic executive summary including hiring recommendation (Hire/No Hire)."
 }}
 [/INST]"""
@@ -258,6 +272,7 @@ Output ONLY a valid JSON object in this format:
                 "experience_match_score": 1,
                 "strengths": ["N/A"],
                 "weaknesses": ["Analysis failed: Transcript likely too short or incoherent."],
+                "proven_skills": ["None detected"],
                 "summary": "The evaluation failed due to insufficient data or LLM error."
             }
 
@@ -274,45 +289,43 @@ Output ONLY a valid JSON object in this format:
         
         # Score Grid
         pdf.set_font('Arial', 'B', 10)
-        pdf.cell(90, 10, f"Technical Depth: {evaluation.get('technical_score', 0)}/10", 1, 0)
-        pdf.cell(90, 10, f"Communication: {evaluation.get('communication_score', 0)}/10", 1, 1)
-        pdf.cell(90, 10, f"Problem Solving: {evaluation.get('problem_solving_score', 0)}/10", 1, 0)
-        pdf.cell(90, 10, f"Experience Match: {evaluation.get('experience_match_score', 0)}/10", 1, 1)
+        pdf.cell(45, 10, f"Technical: {evaluation.get('technical_score', 0)}/10", 1, 0)
+        pdf.cell(45, 10, f"Comm: {evaluation.get('communication_score', 0)}/10", 1, 0)
+        pdf.cell(45, 10, f"Problem: {evaluation.get('problem_solving_score', 0)}/10", 1, 0)
+        pdf.cell(45, 10, f"Match: {evaluation.get('experience_match_score', 0)}/10", 1, 1)
         
         pdf.ln(5)
         pdf.set_font('Arial', 'B', 11)
-        pdf.cell(0, 10, "Auditor Review Notes (Critical Analysis):", 0, 1)
+        pdf.cell(0, 10, "Auditor Review Notes:", 0, 1)
         pdf.set_font('Arial', 'I', 10)
-        pdf.multi_cell(0, 7, evaluation.get('auditor_notes', 'No auditor notes provided.'))
+        pdf.multi_cell(0, 6, evaluation.get('auditor_notes', 'N/A'))
 
         pdf.ln(5)
         pdf.set_font('Arial', 'B', 11)
         pdf.cell(0, 10, "Executive Summary & Recommendation:", 0, 1)
         pdf.set_font('Arial', '', 11)
-        pdf.multi_cell(0, 8, evaluation.get('summary', 'No summary provided.'))
+        pdf.multi_cell(0, 7, evaluation.get('summary', 'N/A'))
         
         pdf.ln(5)
         pdf.set_font('Arial', 'B', 11)
-        pdf.cell(0, 10, "Key Strengths (with Evidence):", 0, 1)
+        pdf.cell(0, 10, "Proven Technical Skills (Evidence-Based):", 0, 1)
+        pdf.set_font('Arial', '', 10)
+        for skill in evaluation.get('proven_skills', []):
+            pdf.cell(0, 7, f"* {skill}", 0, 1)
+
+        pdf.ln(5)
+        pdf.set_font('Arial', 'B', 11)
+        pdf.cell(0, 10, "Key Strengths:", 0, 1)
         pdf.set_font('Arial', '', 10)
         for s in evaluation.get('strengths', []):
-            pdf.multi_cell(0, 7, f"+ {s}")
+            pdf.multi_cell(0, 6, f"+ {s}")
             
         pdf.ln(5)
         pdf.set_font('Arial', 'B', 11)
-        pdf.cell(0, 10, "Critical Weaknesses (with Evidence):", 0, 1)
+        pdf.cell(0, 10, "Critical Weaknesses:", 0, 1)
         pdf.set_font('Arial', '', 10)
         for w in evaluation.get('weaknesses', []):
-            pdf.multi_cell(0, 7, f"- {w}")
-
-        report_filename = f"report_{uuid.uuid4()}.pdf"
-        report_path = os.path.join(REPORTS_DIR, report_filename)
-        pdf.output(report_path)
-
-        return {
-            "evaluation": evaluation,
-            "report_filename": report_filename
-        }
+            pdf.multi_cell(0, 6, f"- {w}")
 
         report_filename = f"report_{uuid.uuid4()}.pdf"
         report_path = os.path.join(REPORTS_DIR, report_filename)

@@ -33,14 +33,14 @@ The report will shift from "Generic Summary" to **"Evidence-Based Critique"**.
 ## 3. Technical Implementation Tasks
 
 ### Week 1: Core Engine Refactoring
-*   [ ] **Upgrade RAG:** Implement "Query Expansion" where the LLM generates a search query based on the conversation state instead of using raw candidate text.
-*   [ ] **Stateful Prompts:** Modify `ai_service/main.py` to support "Phase" instructions in the system prompt.
-*   [ ] **Prompt Engineering:** Implement the "Verification -> Breadth -> Depth" logic in the system instruction.
+*   [x] **Upgrade RAG:** Implement "Query Expansion" where the LLM generates a search query based on the conversation state instead of using raw candidate text.
+*   [x] **Stateful Prompts:** Modify `ai_service/main.py` to support "Phase" instructions in the system prompt.
+*   [x] **Prompt Engineering:** Implement the "Verification -> Breadth -> Depth" logic in the system instruction.
 
 ### Week 2: Advanced Reporting
-*   [ ] **CoT Evaluation:** Update `v1/report/generate` to use a multi-pass evaluation prompt (Audit -> Grade -> Synthesize).
-*   [ ] **PDF Enhancement:** Add "Transcript Evidence" sections to the generated PDF.
-*   [ ] **Skill Mapping:** Visualize "Claimed Skills" (CV) vs. "Proven Skills" (Interview).
+*   [x] **CoT Evaluation:** Update `v1/report/generate` to use a multi-pass evaluation prompt (Audit -> Grade -> Synthesize).
+*   [x] **PDF Enhancement:** Add "Transcript Evidence" sections to the generated PDF.
+*   [x] **Skill Mapping:** Visualize "Claimed Skills" (CV) vs. "Proven Skills" (Interview).
 
 ## 4. Expected Outcome
 The resulting interview will feel like a conversation with a Senior Architect who is looking for reasons *not* to hire, ensuring only high-quality candidates pass.
