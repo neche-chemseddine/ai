@@ -13,11 +13,12 @@ describe('InterviewsService', () => {
   let service: InterviewsService;
   let httpService: HttpService;
   let interviewRepository: any;
-  let tenantRepository: any;
 
   const mockInterviewRepository = {
     create: jest.fn(),
     save: jest.fn(),
+    findOne: jest.fn(),
+    find: jest.fn(),
   };
 
   const mockTenantRepository = {
@@ -31,7 +32,11 @@ describe('InterviewsService', () => {
   };
 
   const mockConfigService = {
-    get: jest.fn().mockReturnValue('http://ai-service:8001'),
+    get: jest.fn().mockImplementation((key, defaultVal) => {
+        if (key === 'AI_SERVICE_URL') return 'http://ai-service:8001';
+        if (key === 'FRONTEND_URL') return 'http://localhost:5173';
+        return defaultVal;
+    }),
   };
 
   beforeEach(async () => {
@@ -48,7 +53,6 @@ describe('InterviewsService', () => {
     service = module.get<InterviewsService>(InterviewsService);
     httpService = module.get<HttpService>(HttpService);
     interviewRepository = module.get(getRepositoryToken(Interview));
-    tenantRepository = module.get(getRepositoryToken(Tenant));
   });
 
   it('should be defined', () => {
@@ -61,36 +65,36 @@ describe('InterviewsService', () => {
       originalname: 'test.pdf',
       mimetype: 'application/pdf',
     } as Express.Multer.File;
+    const tenantId = 'tenant-123';
 
-    it('should successfully process a CV', async () => {
+    it('should successfully process a CV and generate an invite', async () => {
       const aiResponse = {
         data: {
           chunk_count: 5,
           cv_session_id: 'session-123',
         },
         status: 200,
-        statusText: 'OK',
-        headers: {},
-        config: {},
       };
 
       mockHttpService.post.mockReturnValue(of(aiResponse));
-      mockTenantRepository.findOne.mockResolvedValue({ id: 1, name: 'Default Tenant' });
       mockInterviewRepository.create.mockReturnValue({ id: 'uuid-123' });
       mockInterviewRepository.save.mockResolvedValue({
         id: 'uuid-123',
+        tenant_id: tenantId,
         candidate_name: 'Candidate',
-        status: 'active',
+        status: 'pending',
         rubric: { chunks: 5, cv_session_id: 'session-123' },
       });
-
-      const result = await service.processCv(mockFile);
-
-      expect(result).toEqual({
-        interviewId: 'uuid-123',
-        chunk_count: 5,
-        cv_session_id: 'session-123',
+      // Mock findOne for the generateInvite call inside processCv
+      mockInterviewRepository.findOne.mockResolvedValue({
+        id: 'uuid-123',
+        tenant_id: tenantId,
       });
+
+      const result = await service.processCv(mockFile, tenantId);
+
+      expect(result).toHaveProperty('inviteUrl');
+      expect(result.interviewId).toBe('uuid-123');
       expect(mockHttpService.post).toHaveBeenCalled();
       expect(mockInterviewRepository.save).toHaveBeenCalled();
     });
@@ -98,25 +102,7 @@ describe('InterviewsService', () => {
     it('should throw InternalServerErrorException if AI service fails', async () => {
       mockHttpService.post.mockReturnValue(throwError(() => new Error('AI Service Down')));
 
-      await expect(service.processCv(mockFile)).rejects.toThrow(InternalServerErrorException);
+      await expect(service.processCv(mockFile, tenantId)).rejects.toThrow(InternalServerErrorException);
     });
-
-    it('should create a tenant if one does not exist', async () => {
-        const aiResponse = {
-          data: { chunk_count: 1, cv_session_id: 'sid' },
-          status: 200,
-        };
-        mockHttpService.post.mockReturnValue(of(aiResponse));
-        mockTenantRepository.findOne.mockResolvedValue(null);
-        mockTenantRepository.create.mockReturnValue({ name: 'Default Tenant' });
-        mockTenantRepository.save.mockResolvedValue({ id: 1, name: 'Default Tenant' });
-        mockInterviewRepository.create.mockReturnValue({});
-        mockInterviewRepository.save.mockResolvedValue({ id: 'int-1' });
-  
-        await service.processCv(mockFile);
-  
-        expect(mockTenantRepository.create).toHaveBeenCalled();
-        expect(mockTenantRepository.save).toHaveBeenCalled();
-      });
   });
 });

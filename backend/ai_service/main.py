@@ -1,4 +1,5 @@
 from fastapi import FastAPI, UploadFile, File, HTTPException
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 import fitz  # PyMuPDF
 import os
@@ -8,7 +9,10 @@ from sentence_transformers import SentenceTransformer
 from llama_cpp import Llama
 from huggingface_hub import hf_hub_download
 import uuid
-from typing import List
+from typing import List, Optional
+from fpdf import FPDF
+import json
+import re
 
 app = FastAPI(title="IntelliView AI Service")
 
@@ -27,11 +31,18 @@ llm = Llama(model_path=MODEL_PATH, n_ctx=2048, n_threads=4)
 print("LLM Loaded.")
 
 COLLECTION_NAME = "cv_chunks"
+REPORTS_DIR = "/home/chems/.gemini/tmp/reports"
+os.makedirs(REPORTS_DIR, exist_ok=True)
 
 class ChatRequest(BaseModel):
     cv_session_id: str
     message: str
     history: List[dict] = []
+
+class EvaluationRequest(BaseModel):
+    candidate_name: str
+    transcript: List[dict]
+    cv_session_id: str
 
 # Ensure collection exists
 try:
@@ -41,6 +52,17 @@ except Exception:
         collection_name=COLLECTION_NAME,
         vectors_config=models.VectorParams(size=384, distance=models.Distance.COSINE),
     )
+
+class ReportPDF(FPDF):
+    def header(self):
+        self.set_font('Arial', 'B', 15)
+        self.cell(0, 10, 'IntelliView AI - Candidate Evaluation Report', 0, 1, 'C')
+        self.ln(5)
+
+    def footer(self):
+        self.set_y(-15)
+        self.set_font('Arial', 'I', 8)
+        self.cell(0, 10, f'Page {self.page_no()}', 0, 0, 'C')
 
 @app.get("/health")
 async def health_check():
@@ -92,11 +114,7 @@ async def parse_cv(file: UploadFile = File(...)):
 @app.post("/v1/chat/generate")
 async def generate_response(request: ChatRequest):
     try:
-        print(f"Generating response for CV session: {request.cv_session_id}")
-        # 1. Retrieve context from Qdrant
         query_vector = embed_model.encode(request.message).tolist()
-        
-        # Using query_points (modern API) instead of search
         search_result = qdrant_client.query_points(
             collection_name=COLLECTION_NAME,
             query=query_vector,
@@ -112,9 +130,7 @@ async def generate_response(request: ChatRequest):
         ).points
         
         context = "\n".join([hit.payload["text"] for hit in search_result])
-        print(f"Retrieved {len(search_result)} chunks for context.")
         
-        # 2. Build prompt
         system_prompt = f"""You are an expert technical interviewer. 
 Use the following CV context to interview the candidate. 
 Be professional, concise, and ask relevant technical questions.
@@ -124,25 +140,87 @@ CV CONTEXT:
 """
         full_prompt = f"<s>[INST] {system_prompt}\n\nCandidate: {request.message} [/INST]"
         
-        # 3. Generate response
-        print("Generating LLM response...")
-        output = llm(
-            full_prompt,
-            max_tokens=256,
-            stop=["[INST]", "</s>"],
-            echo=False
-        )
-        
+        output = llm(full_prompt, max_tokens=256, stop=["[INST]", "</s>"], echo=False)
         response_text = output["choices"][0]["text"].strip()
-        print("Response generated.")
         
         return {"response": response_text}
     except Exception as e:
-        print(f"Error in generate: {e}")
-        # Log more details about the client if it fails again
-        print(f"Client type: {type(qdrant_client)}")
-        print(f"Client dir: {dir(qdrant_client)}")
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/v1/report/generate")
+async def generate_report(request: EvaluationRequest):
+    try:
+        # 1. Prepare Transcript for LLM
+        transcript_text = "\n".join([f"{m['role'].upper()}: {m['content']}" for m in request.transcript])
+        
+        # 2. Ask LLM to evaluate
+        eval_prompt = f"""<s>[INST] Analyze the following technical interview transcript and provide a structured evaluation.
+Return only a JSON object with the following fields:
+- technical_score (1-10)
+- communication_score (1-10)
+- strengths (list of strings)
+- weaknesses (list of strings)
+- summary (string)
+
+TRANSCRIPT:
+{transcript_text}
+[/INST]"""
+
+        output = llm(eval_prompt, max_tokens=1024, stop=["</s>"], echo=False)
+        eval_json_str = output["choices"][0]["text"].strip()
+        
+        # Extract JSON from potential prose
+        match = re.search(r'\{.*\}', eval_json_str, re.DOTALL)
+        if match:
+            evaluation = json.loads(match.group())
+        else:
+            raise ValueError("Could not parse LLM evaluation as JSON")
+
+        # 3. Generate PDF
+        pdf = ReportPDF()
+        pdf.add_page()
+        pdf.set_font('Arial', 'B', 12)
+        pdf.cell(0, 10, f"Candidate: {request.candidate_name}", 0, 1)
+        pdf.cell(0, 10, f"Technical Score: {evaluation.get('technical_score')}/10", 0, 1)
+        pdf.cell(0, 10, f"Communication Score: {evaluation.get('communication_score')}/10", 0, 1)
+        
+        pdf.ln(5)
+        pdf.cell(0, 10, "Summary:", 0, 1)
+        pdf.set_font('Arial', '', 11)
+        pdf.multi_cell(0, 10, evaluation.get('summary', 'No summary provided.'))
+        
+        pdf.ln(5)
+        pdf.set_font('Arial', 'B', 11)
+        pdf.cell(0, 10, "Strengths:", 0, 1)
+        pdf.set_font('Arial', '', 11)
+        for s in evaluation.get('strengths', []):
+            pdf.cell(0, 10, f"- {s}", 0, 1)
+            
+        pdf.ln(5)
+        pdf.set_font('Arial', 'B', 11)
+        pdf.cell(0, 10, "Weaknesses:", 0, 1)
+        pdf.set_font('Arial', '', 11)
+        for w in evaluation.get('weaknesses', []):
+            pdf.cell(0, 10, f"- {w}", 0, 1)
+
+        report_filename = f"report_{uuid.uuid4()}.pdf"
+        report_path = os.path.join(REPORTS_DIR, report_filename)
+        pdf.output(report_path)
+
+        return {
+            "evaluation": evaluation,
+            "report_filename": report_filename
+        }
+    except Exception as e:
+        print(f"Error generating report: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/v1/report/download/{filename}")
+async def download_report(filename: str):
+    file_path = os.path.join(REPORTS_DIR, filename)
+    if not os.path.exists(file_path):
+        raise HTTPException(status_code=404, detail="Report not found")
+    return FileResponse(file_path, filename=filename, media_type='application/pdf')
 
 if __name__ == "__main__":
     import uvicorn
