@@ -15,5 +15,6 @@ import { Tenant } from '../entities/tenant.entity';
   ],
   controllers: [InterviewsController],
   providers: [InterviewsService],
+  exports: [InterviewsService],
 })
 export class InterviewsModule {}

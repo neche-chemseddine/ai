@@ -32,6 +32,7 @@ CREATE TABLE interviews (
     candidate_name TEXT,
     cv_url TEXT,
     status TEXT, -- pending, active, completed
+    question_count INTEGER DEFAULT 0,
     rubric JSONB,
     report_url TEXT
 );
@@ -51,10 +52,14 @@ CREATE TABLE messages (
 *   `GET /api/v1/reports/:interview_id`: Fetch generated evaluation.
 
 ## 5. WebSocket Design (Interview Session)
-*   `EVENT: candidate_message`: Sent by client when candidate submits answer.
-*   `EVENT: interviewer_typing`: Sent by server to show activity.
-*   `EVENT: interviewer_message`: The LLM-generated response.
-*   `EVENT: session_end`: Triggered by AI when it has enough info.
+*   **EVENT: candidate_message**: Sent by client when candidate submits answer.
+*   **EVENT: interviewer_typing**: Sent by server to show activity.
+*   **EVENT: interviewer_message**: The LLM-generated response.
+*   **EVENT: session_completed**: Emitted when the question limit is reached.
+*   **Logic Flow:**
+    1. Gateway receives message and increments `question_count`.
+    2. If `count < limit`, requests next question.
+    3. If `count == limit`, requests a concluding message and triggers Report Generation.
 
 ## 6. CV Processing Pipeline
 1.  **Extract:** Python service extracts text from PDF using `PyMuPDF`.

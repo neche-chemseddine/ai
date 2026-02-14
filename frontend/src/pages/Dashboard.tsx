@@ -11,7 +11,6 @@ import {
   LayoutDashboard,
   Settings,
   MoreVertical,
-  Upload,
   FileIcon,
   Menu,
   User as UserIcon,
@@ -286,7 +285,7 @@ const Dashboard = () => {
               { label: 'Active Sessions', value: interviews.filter(i => i.status === 'active').length, icon: ArrowUpRight, color: 'text-blue-500' },
               { label: 'Hiring Completed', value: interviews.filter(i => i.status === 'completed').length, icon: CheckCircle, color: 'text-green-500' }
             ].map((stat, i) => (
-              <Card key={i} variant="outline">
+              <Card key={i}>
                 <CardHeader className="flex flex-row items-center justify-between pb-2">
                   <CardTitle className="text-xs font-bold text-muted-foreground uppercase tracking-wider">{stat.label}</CardTitle>
                   <stat.icon size={16} className="text-muted-foreground" />
@@ -299,7 +298,7 @@ const Dashboard = () => {
           </div>
 
           {/* Interviews Table */}
-          <Card variant="outline" className="overflow-hidden">
+          <Card className="overflow-hidden">
             <CardHeader className="px-6 py-5 border-b">
               <div className="flex items-center justify-between">
                 <div>

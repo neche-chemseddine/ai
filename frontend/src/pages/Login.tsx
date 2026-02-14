@@ -56,7 +56,7 @@ const Login = () => {
           </p>
         </div>
 
-        <Card variant="outline">
+        <Card>
           <CardHeader>
             <CardTitle>
               {isRegister ? 'Create Account' : 'Welcome Back'}

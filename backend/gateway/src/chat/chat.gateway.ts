@@ -15,6 +15,7 @@ import { ConfigService } from '@nestjs/config';
 import { firstValueFrom } from 'rxjs';
 import { Message } from '../entities/message.entity';
 import { Interview } from '../entities/interview.entity';
+import { InterviewsService } from '../interviews/interviews.service';
 
 @WebSocketGateway({
   cors: {
@@ -25,6 +26,8 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   @WebSocketServer()
   server: Server;
 
+  private readonly MAX_QUESTIONS = 3; // Configurable limit
+
   constructor(
     @InjectRepository(Message)
     private readonly messageRepository: Repository<Message>,
@@ -32,6 +35,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     private readonly interviewRepository: Repository<Interview>,
     private readonly httpService: HttpService,
     private readonly configService: ConfigService,
+    private readonly interviewsService: InterviewsService,
   ) {}
 
   handleConnection(client: Socket) {
@@ -52,8 +56,8 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       relations: ['messages'] 
     });
     
-    if (!interview) {
-      console.error(`Interview not found: ${data.interviewId}`);
+    if (!interview || interview.status === 'completed') {
+      console.error(`Interview not found or already completed: ${data.interviewId}`);
       return;
     }
 
@@ -65,6 +69,10 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     });
     await this.messageRepository.save(userMsg);
     
+    // Increment question count
+    interview.question_count += 1;
+    await this.interviewRepository.save(interview);
+
     // 2. Emit typing indicator
     client.emit('interviewer_typing', { typing: true });
 
@@ -73,10 +81,15 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     const cv_session_id = (interview.rubric as any)?.cv_session_id;
 
     try {
+      // If we reached the limit, we tell the AI to conclude
+      const isLastQuestion = interview.question_count >= this.MAX_QUESTIONS;
+      
       const response = await firstValueFrom(
         this.httpService.post(`${aiServiceUrl}/v1/chat/generate`, {
           cv_session_id: cv_session_id,
-          message: data.text,
+          message: isLastQuestion 
+            ? `${data.text} (Note: This is the last response. Conclude the interview and say goodbye.)` 
+            : data.text,
           history: interview.messages.map(m => ({ role: m.role, content: m.content }))
         })
       );
@@ -95,6 +108,21 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         text: aiText,
         role: 'assistant',
       });
+
+      // 4. Handle session closure
+      if (isLastQuestion) {
+        client.emit('session_completed', { 
+          message: "Interview completed. Generating your technical report..." 
+        });
+        
+        // Trigger report generation in background
+        await this.interviewsService.evaluateInterview(interview.id, interview.tenant_id);
+        
+        client.emit('report_ready', { 
+          message: "Your evaluation is complete. Thank you!" 
+        });
+      }
+
     } catch (error) {
       console.error('Error calling AI Service:', error.message);
       client.emit('interviewer_message', {
