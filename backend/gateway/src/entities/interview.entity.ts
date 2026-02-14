@@ -1,4 +1,4 @@
-import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, OneToMany, CreateDateColumn } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, OneToMany, CreateDateColumn, JoinColumn } from 'typeorm';
 import { Tenant } from './tenant.entity';
 import { Message } from './message.entity';
 
@@ -8,7 +8,11 @@ export class Interview {
   id: string;
 
   @ManyToOne(() => Tenant, (tenant) => tenant.interviews)
+  @JoinColumn({ name: 'tenant_id' })
   tenant: Tenant;
+
+  @Column()
+  tenant_id: string;
 
   @Column()
   candidate_name: string;
@@ -24,6 +28,12 @@ export class Interview {
 
   @Column({ nullable: true })
   report_url: string;
+
+  @Column({ unique: true, nullable: true })
+  access_token: string;
+
+  @Column({ type: 'timestamp', nullable: true })
+  expires_at: Date;
 
   @CreateDateColumn()
   created_at: Date;

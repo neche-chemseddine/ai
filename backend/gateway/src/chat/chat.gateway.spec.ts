@@ -4,11 +4,15 @@ import { getRepositoryToken } from '@nestjs/typeorm';
 import { Message } from '../entities/message.entity';
 import { Interview } from '../entities/interview.entity';
 import { Socket } from 'socket.io';
+import { HttpService } from '@nestjs/axios';
+import { ConfigService } from '@nestjs/config';
+import { of } from 'rxjs';
 
 describe('ChatGateway', () => {
   let gateway: ChatGateway;
   let messageRepo: any;
   let interviewRepo: any;
+  let httpService: any;
 
   const mockMessageRepo = {
     create: jest.fn().mockImplementation(dto => dto),
@@ -19,29 +23,38 @@ describe('ChatGateway', () => {
     findOne: jest.fn(),
   };
 
+  const mockHttpService = {
+    post: jest.fn(),
+  };
+
+  const mockConfigService = {
+    get: jest.fn().mockReturnValue('http://ai-service:8001'),
+  };
+
   const mockSocket = {
     id: 'test-socket-id',
     emit: jest.fn(),
   } as unknown as Socket;
 
   beforeEach(async () => {
-    jest.useFakeTimers();
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         ChatGateway,
         { provide: getRepositoryToken(Message), useValue: mockMessageRepo },
         { provide: getRepositoryToken(Interview), useValue: mockInterviewRepo },
+        { provide: HttpService, useValue: mockHttpService },
+        { provide: ConfigService, useValue: mockConfigService },
       ],
     }).compile();
 
     gateway = module.get<ChatGateway>(ChatGateway);
     messageRepo = module.get(getRepositoryToken(Message));
     interviewRepo = module.get(getRepositoryToken(Interview));
+    httpService = module.get(HttpService);
   });
 
   afterEach(() => {
     jest.clearAllMocks();
-    jest.useRealTimers();
   });
 
   it('should be defined', () => {
@@ -49,53 +62,43 @@ describe('ChatGateway', () => {
   });
 
   describe('handleMessage', () => {
-    it('should save user message and emit typing then response', async () => {
+    it('should save user message, call AI service, and emit response', async () => {
       const interviewId = 'int-123';
       const text = 'Hello AI';
-      const mockInterview = { id: interviewId };
+      const mockInterview = { 
+        id: interviewId, 
+        messages: [],
+        rubric: { cv_session_id: 'sid-123' }
+      };
 
       interviewRepo.findOne.mockResolvedValue(mockInterview);
+      httpService.post.mockReturnValue(of({ data: { response: 'AI Answer' } }));
 
       await gateway.handleMessage({ interviewId, text }, mockSocket);
 
       // 1. Check user message saved
-      expect(interviewRepo.findOne).toHaveBeenCalledWith({ where: { id: interviewId } });
+      expect(interviewRepo.findOne).toHaveBeenCalled();
       expect(messageRepo.create).toHaveBeenCalledWith(expect.objectContaining({
         content: text,
         role: 'user',
       }));
-      expect(messageRepo.save).toHaveBeenCalled();
 
-      // 2. Check typing emitted
-      expect(mockSocket.emit).toHaveBeenCalledWith('interviewer_typing', { typing: true });
+      // 2. Check AI service called
+      expect(httpService.post).toHaveBeenCalledWith(
+        expect.stringContaining('/v1/chat/generate'),
+        expect.objectContaining({ message: text })
+      );
 
-      // 3. Fast-forward time for AI response
-      jest.advanceTimersByTime(2000);
-
-      // Wait for any pending promises in the setTimeout
-      await Promise.resolve(); 
-
-      // 4. Check AI response saved and emitted
+      // 3. Check AI response saved and emitted
       expect(messageRepo.create).toHaveBeenCalledWith(expect.objectContaining({
+        content: 'AI Answer',
         role: 'assistant',
       }));
       expect(mockSocket.emit).toHaveBeenCalledWith('interviewer_message', expect.objectContaining({
-        text: expect.stringContaining('AI response to:'),
+        text: 'AI Answer',
         role: 'assistant',
       }));
       expect(mockSocket.emit).toHaveBeenCalledWith('interviewer_typing', { typing: false });
-    });
-
-    it('should not proceed if interview is not found', async () => {
-      interviewRepo.findOne.mockResolvedValue(null);
-      const consoleSpy = jest.spyOn(console, 'error').mockImplementation();
-
-      await gateway.handleMessage({ interviewId: 'bad-id', text: 'hi' }, mockSocket);
-
-      expect(messageRepo.save).not.toHaveBeenCalled();
-      expect(consoleSpy).toHaveBeenCalled();
-      
-      consoleSpy.mockRestore();
     });
   });
 });

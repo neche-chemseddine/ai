@@ -27,6 +27,7 @@ env/
 *.swo
 
 # Project specific
+dist-test/
 backend/gateway/dist
 backend/gateway/node_modules
 frontend/node_modules

@@ -1,6 +1,6 @@
 # IntelliView AI - Development Makefile
 
-.PHONY: install run-all run-ai run-gw run-fe docker-up docker-down help
+.PHONY: install run-all run-ai run-gw run-fe docker-up docker-down docker-reset help
 
 # Colors for help message
 BLUE := \033[34m
@@ -12,6 +12,7 @@ help:
 	@echo "  make ${BLUE}run-all${NC}     - Run all services locally (parallel)"
 	@echo "  make ${BLUE}docker-up${NC}   - Start everything in Docker"
 	@echo "  make ${BLUE}docker-down${NC} - Stop Docker containers"
+	@echo "  make ${BLUE}docker-reset${NC}- Reset database (wipes volumes) and rebuild containers"
 
 install:
 	@echo "Installing dependencies..."
@@ -39,3 +40,8 @@ docker-up:
 docker-down:
 	@echo "Stopping Docker containers..."
 	docker compose down
+
+docker-reset:
+	@echo "Resetting Docker environment (wiping volumes)..."
+	docker compose down -v
+	docker compose up --build
