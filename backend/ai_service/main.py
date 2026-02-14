@@ -115,17 +115,25 @@ async def parse_cv(file: UploadFile = File(...)):
 @app.post("/v1/chat/generate")
 async def generate_response(request: ChatRequest):
     try:
-        # Context Retrieval Strategy
-        # If we have history, use the last AI question + current user message for better context
+        # 1. Determine Interview Phase based on history length
+        history_len = len(request.history)
+        if history_len < 2:
+            phase = "VERIFICATION (Confirming CV facts)"
+        elif history_len < 6:
+            phase = "BREADTH (Scanning technical skills)"
+        elif history_len < 12:
+            phase = "DEPTH (Deep dive into complex projects)"
+        else:
+            phase = "SCENARIO (Problem solving & architecture)"
+
+        # 2. Context Retrieval Strategy
+        # Search query combines the last AI question + current user message for better context
         search_query = request.message
-        if request.history and len(request.history) > 0:
-            last_msg = request.history[-1]
-            if last_msg.get("role") == "assistant":
-                content = last_msg.get("content")
-                if content:
-                     search_query = f"{content} {request.message}"
+        if request.history:
+            last_msgs = [m.get("content", "") for m in request.history[-2:]]
+            search_query = f"{' '.join(last_msgs)} {request.message}"
         
-        print(f"DEBUG: Search Query: {search_query}", flush=True)
+        print(f"DEBUG: Phase: {phase} | Search Query: {search_query}", flush=True)
 
         query_vector = embed_model.encode(search_query).tolist()
         search_result = qdrant_client.query_points(
@@ -139,55 +147,53 @@ async def generate_response(request: ChatRequest):
                     )
                 ]
             ),
-            limit=3
+            limit=5  # Increased from 3 to 5 for better context
         ).points
         
-        context = "\n".join([hit.payload["text"] for hit in search_result])
+        context = "\n".join([f"- {hit.payload['text']}" for hit in search_result])
         
+        # 3. System Prompt Construction
+        system_prompt = f"""You are a Senior Principal Engineer conducting a strict technical interview.
+Current Phase: {phase}
+
+CORE RULES:
+1. LEAD THE INTERVIEW. Ask exactly ONE sharp, technical question per turn.
+2. PROBE DEEPER: If the candidate's answer is vague or short, do not move on. Ask "How" or "Why".
+3. NO FLUFF: Be extremely concise (max 2 sentences). No "Great", "Excellent", or "I see".
+4. REDIRECT: If the candidate is off-topic or asks you a question, firmly bring them back to your technical question.
+5. NEVER reveal you are an AI. Never include meta-commentary or notes.
+
+CV CONTEXT (Use this to ground your questions):
+{context}
+"""
+
+        # 4. Mistral-7B History Formatting (<s>[INST] Instruction [/INST] Model answer</s>[INST] Follow-up [/INST])
         if request.is_init:
-            system_prompt = f"""You are a strict technical interviewer. 
-Greet the candidate and ask ONE specific technical question from their CV context.
-Be brief (max 2 sentences).
-DO NOT include any notes, thoughts, or meta-commentary.
-
-CV CONTEXT:
-{context}
-"""
-            full_prompt = f"<s>[INST] {system_prompt} [/INST]"
+            full_prompt = f"<s>[INST] {system_prompt}\n\nGreet the candidate and start the {phase} phase with one question. [/INST]"
         else:
-            system_prompt = f"""You are a strict technical interviewer. 
-
-Rules:
-1. You are leading the interview. DO NOT answer any questions asked by the candidate.
-2. If the candidate asks a question, refuses to answer, or is off-topic, firmly redirect them to your original question.
-3. Ask exactly ONE question per turn.
-4. Do not repeat questions you have already asked in the history.
-5. Be extremely concise (1-2 sentences).
-6. NEVER include meta-commentary like "Note:", "(Note: ...)", or explanations about your rules.
-
-CV CONTEXT:
-{context}
-"""
-            # Build history string
-            conversation_history = ""
-            if request.history:
-                for msg in request.history:
-                    role = msg.get("role")
-                    content = msg.get("content")
-                    if role == "assistant":
-                        conversation_history += f"{content} </s>"
-                    elif role == "user":
-                        conversation_history += f"<s>[INST] {content} [/INST]"
+            # Reconstruct history in Mistral format
+            formatted_history = ""
+            for i, msg in enumerate(request.history):
+                role = msg.get("role")
+                content = msg.get("content")
+                if role == "user":
+                    formatted_history += f"[INST] {content} [/INST] "
+                else:
+                    formatted_history += f"{content} </s><s>"
             
-            # Construct full prompt with history
-            full_prompt = f"<s>[INST] {system_prompt} [/INST] {conversation_history} <s>[INST] {request.message} [/INST]"
-        
+            # Remove trailing <s> if exists
+            if formatted_history.endswith("<s>"):
+                formatted_history = formatted_history[:-3]
+
+            full_prompt = f"<s>[INST] {system_prompt} [/INST] {formatted_history} [INST] {request.message} [/INST]"
+
         print(f"DEBUG: Full Prompt Length: {len(full_prompt)}", flush=True)
-        output = llm(full_prompt, max_tokens=128, stop=["[INST]", "</s>", "Note:", "("], echo=False)
+        output = llm(full_prompt, max_tokens=150, stop=["[INST]", "</s>", "Note:", "Interviewer:"], echo=False)
         response_text = output["choices"][0]["text"].strip()
         
-        # Post-processing to remove any accidental leakage if LLM ignores 'stop'
+        # Final cleanup
         response_text = re.sub(r"\(?Note:.*", "", response_text, flags=re.IGNORECASE).strip()
+        response_text = response_text.replace("Assistant:", "").replace("Interviewer:", "").strip()
         
         return {"response": response_text}
     except Exception as e:
@@ -202,33 +208,34 @@ async def generate_report(request: EvaluationRequest):
         # 1. Prepare Transcript for LLM
         transcript_text = "\n".join([f"{m['role'].upper()}: {m['content']}" for m in request.transcript])
         
-        # 2. Ask LLM to evaluate
-        eval_prompt = f"""<s>[INST] Evaluate this technical interview transcript. Return ONLY a JSON object.
+        # 2. Ask LLM to evaluate with Chain-of-Thought (CoT)
+        eval_prompt = f"""<s>[INST] You are an Elite Technical Bar-Raiser. Evaluate this technical interview transcript with extreme skepticism.
 
-**STRICT Evaluation Rules:**
-1. Be extremely critical. 
-2. If the candidate repeated the same answer or information, penalize heavily in all scores.
-3. If the candidate asked questions back to the interviewer instead of answering, give a 0 for technical and problem solving scores for those turns.
-4. If the candidate used generic/vague buzzwords without explaining 'how' or 'why', give low technical scores (1-3).
-5. High scores (8-10) require specific, unique technical details for EVERY answer.
-6. Evaluate ONLY what is demonstrated in the TRANSCRIPT, not what is in the CV.
+**STRICT CRITICAL RULES:**
+1. ANALYZE FIRST: Before giving scores, write a short "Auditor Note" for each turn identifying if the candidate was vague, technically incorrect, or evasive.
+2. PENALIZE HEAVILY:
+   - Surface-level answers (buzzwords without "how/why") = Max 3/10.
+   - Repeating information or dodging questions = 0/10 for that section.
+   - Discrepancy between CV claims and interview performance = Flag as "High Risk".
+3. EVIDENCE REQUIRED: For every strength and weakness, you MUST include a direct quote from the candidate.
 
 TRANSCRIPT:
 {transcript_text}
 
-JSON Format:
+Output ONLY a valid JSON object in this format:
 {{
+    "auditor_notes": "Your internal critique of the candidate's honesty and depth...",
     "technical_score": int,
     "communication_score": int,
     "problem_solving_score": int,
     "experience_match_score": int,
-    "strengths": ["..."],
-    "weaknesses": ["..."],
-    "summary": "..."
+    "strengths": ["Strength description [Quote from transcript]"],
+    "weaknesses": ["Weakness description [Quote from transcript]"],
+    "summary": "Realistic executive summary including hiring recommendation (Hire/No Hire)."
 }}
 [/INST]"""
 
-        output = llm(eval_prompt, max_tokens=1536, stop=["</s>"], echo=False)
+        output = llm(eval_prompt, max_tokens=2048, stop=["</s>"], echo=False)
         eval_json_str = output["choices"][0]["text"].strip()
         print(f"DEBUG: Raw LLM Output: {eval_json_str}", flush=True)
         
@@ -238,53 +245,26 @@ JSON Format:
             end_idx = eval_json_str.rfind('}')
             
             if start_idx != -1:
-                if end_idx == -1 or end_idx < start_idx:
-                    # Try to close it if it's truncated
-                    json_str = eval_json_str[start_idx:] + '\n"}"' 
-                    # This is a bit hacky, better to just try parsing what we have or fix common issues
-                else:
-                    json_str = eval_json_str[start_idx:end_idx+1]
-                
-                # Attempt to parse
-                try:
-                    evaluation = json.loads(json_str)
-                except json.JSONDecodeError:
-                    # If it failed, maybe it's missing the closing brace
-                    if not json_str.strip().endswith('}'):
-                        try:
-                            evaluation = json.loads(json_str + '}')
-                        except:
-                            # Try one more: close any open strings and then the object
-                            try:
-                                evaluation = json.loads(json_str + '"] }')
-                            except:
-                                raise ValueError("JSON truncated beyond simple repair")
-                    else:
-                        raise
+                json_str = eval_json_str[start_idx:end_idx+1]
+                evaluation = json.loads(json_str)
             else:
                  raise ValueError("Could not find { in LLM output")
         except Exception as e:
             print(f"JSON Extraction Error: {e}. Raw: {eval_json_str}")
-            # Fallback to a failure evaluation instead of 500
             evaluation = {
                 "technical_score": 1,
                 "communication_score": 1,
                 "problem_solving_score": 1,
                 "experience_match_score": 1,
                 "strengths": ["N/A"],
-                "weaknesses": ["System failed to parse evaluation"],
-                "summary": "The evaluation could not be parsed due to an LLM output error."
+                "weaknesses": ["Analysis failed: Transcript likely too short or incoherent."],
+                "summary": "The evaluation failed due to insufficient data or LLM error."
             }
 
-
-        # Enforce defaults for all required fields
-        evaluation.setdefault('technical_score', 1)
-        evaluation.setdefault('communication_score', 1)
-        evaluation.setdefault('problem_solving_score', 1)
-        evaluation.setdefault('experience_match_score', 1)
-        evaluation.setdefault('strengths', ["Insufficient data"])
-        evaluation.setdefault('weaknesses', ["Candidate provided insufficient or vague responses."])
-        evaluation.setdefault('summary', "The interview was too short or vague to provide a meaningful evaluation.")
+        # Enforce defaults and realistic overrides
+        if len(request.transcript) < 4:
+            evaluation["summary"] = "NO HIRE: Interview was too short to establish any technical signal."
+            evaluation["technical_score"] = min(evaluation.get("technical_score", 1), 2)
 
         # 3. Generate PDF
         pdf = ReportPDF()
@@ -294,30 +274,45 @@ JSON Format:
         
         # Score Grid
         pdf.set_font('Arial', 'B', 10)
-        pdf.cell(90, 10, f"Technical Depth: {evaluation['technical_score']}/10", 1, 0)
-        pdf.cell(90, 10, f"Communication: {evaluation['communication_score']}/10", 1, 1)
-        pdf.cell(90, 10, f"Problem Solving: {evaluation['problem_solving_score']}/10", 1, 0)
-        pdf.cell(90, 10, f"Experience Match: {evaluation['experience_match_score']}/10", 1, 1)
+        pdf.cell(90, 10, f"Technical Depth: {evaluation.get('technical_score', 0)}/10", 1, 0)
+        pdf.cell(90, 10, f"Communication: {evaluation.get('communication_score', 0)}/10", 1, 1)
+        pdf.cell(90, 10, f"Problem Solving: {evaluation.get('problem_solving_score', 0)}/10", 1, 0)
+        pdf.cell(90, 10, f"Experience Match: {evaluation.get('experience_match_score', 0)}/10", 1, 1)
         
         pdf.ln(5)
         pdf.set_font('Arial', 'B', 11)
-        pdf.cell(0, 10, "Executive Summary:", 0, 1)
+        pdf.cell(0, 10, "Auditor Review Notes (Critical Analysis):", 0, 1)
+        pdf.set_font('Arial', 'I', 10)
+        pdf.multi_cell(0, 7, evaluation.get('auditor_notes', 'No auditor notes provided.'))
+
+        pdf.ln(5)
+        pdf.set_font('Arial', 'B', 11)
+        pdf.cell(0, 10, "Executive Summary & Recommendation:", 0, 1)
         pdf.set_font('Arial', '', 11)
         pdf.multi_cell(0, 8, evaluation.get('summary', 'No summary provided.'))
         
         pdf.ln(5)
         pdf.set_font('Arial', 'B', 11)
-        pdf.cell(0, 10, "Key Strengths:", 0, 1)
-        pdf.set_font('Arial', '', 11)
+        pdf.cell(0, 10, "Key Strengths (with Evidence):", 0, 1)
+        pdf.set_font('Arial', '', 10)
         for s in evaluation.get('strengths', []):
-            pdf.cell(0, 8, f"- {s}", 0, 1)
+            pdf.multi_cell(0, 7, f"+ {s}")
             
         pdf.ln(5)
         pdf.set_font('Arial', 'B', 11)
-        pdf.cell(0, 10, "Areas for Improvement:", 0, 1)
-        pdf.set_font('Arial', '', 11)
+        pdf.cell(0, 10, "Critical Weaknesses (with Evidence):", 0, 1)
+        pdf.set_font('Arial', '', 10)
         for w in evaluation.get('weaknesses', []):
-            pdf.cell(0, 8, f"- {w}", 0, 1)
+            pdf.multi_cell(0, 7, f"- {w}")
+
+        report_filename = f"report_{uuid.uuid4()}.pdf"
+        report_path = os.path.join(REPORTS_DIR, report_filename)
+        pdf.output(report_path)
+
+        return {
+            "evaluation": evaluation,
+            "report_filename": report_filename
+        }
 
         report_filename = f"report_{uuid.uuid4()}.pdf"
         report_path = os.path.join(REPORTS_DIR, report_filename)

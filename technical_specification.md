@@ -60,10 +60,14 @@ CREATE TABLE messages (
 *   **Logic Flow:**
     1.  **Preparation:** Candidate connects to WebSocket (no automated message).
     2.  **Trigger:** Candidate emits `start_interview`.
-    3.  **Initiation:** Gateway calls AI Service with `is_init: true`, saves the response, and emits the first message.
-    4.  **Standard Loop:** Gateway receives `candidate_message` and increments `question_count`.
-    5.  **Turn-Taking:** If `count < limit`, requests next question from AI Service.
-    6.  **Termination:** If `count == limit`, requests a concluding message and triggers Report Generation.
+    3.  **Initiation:** Gateway calls AI Service with `is_init: true`, which starts the **VERIFICATION** phase.
+    4.  **Phase Progression:** The AI Service automatically transitions through phases based on history length:
+        - **VERIFICATION** (0-2 messages)
+        - **BREADTH** (2-6 messages)
+        - **DEPTH** (6-12 messages)
+        - **SCENARIO** (12+ messages)
+    5.  **Turn-Taking:** Gateway receives `candidate_message` and increments `question_count`.
+    6.  **Termination:** If `count == limit`, requests a concluding message and triggers the **Brutal Evaluation** pipeline.
 
 ## 6. CV Processing Pipeline
 1.  **Extract:** Python service extracts text from PDF using `PyMuPDF`.
