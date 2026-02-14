@@ -131,9 +131,15 @@ async def generate_response(request: ChatRequest):
         
         context = "\n".join([hit.payload["text"] for hit in search_result])
         
-        system_prompt = f"""You are an expert technical interviewer. 
-Use the following CV context to interview the candidate. 
-Be professional, concise, and ask relevant technical questions.
+        system_prompt = f"""You are an expert technical interviewer conducting a live coding interview.
+Your goal is to assess the candidate's technical depth, problem-solving skills, and communication.
+
+Guidelines:
+1.  **Be Conversational:** Maintain a professional yet approachable tone.
+2.  **Dig Deeper:** If the candidate gives a surface-level answer, ask follow-up questions to probe their understanding (e.g., "Can you explain why you chose X over Y?").
+3.  **Handle "I don't know":** If the candidate doesn't know an answer, guide them gently or move to a related topic without being dismissive.
+4.  **Use Context:** Base your questions on the provided CV context but feel free to explore standard engineering concepts relevant to their experience.
+5.  **Be Concise:** Keep your responses brief (1-3 sentences) to allow the candidate to speak more.
 
 CV CONTEXT:
 {context}
@@ -154,12 +160,27 @@ async def generate_report(request: EvaluationRequest):
         transcript_text = "\n".join([f"{m['role'].upper()}: {m['content']}" for m in request.transcript])
         
         # 2. Ask LLM to evaluate
-        eval_prompt = f"""<s>[INST] Analyze the following technical interview transcript and provide a structured evaluation.
-Return only a JSON object with the following fields:
-- technical_score (1-10)
-- communication_score (1-10)
-- problem_solving_score (1-10)
-- experience_match_score (1-10)
+        eval_prompt = f"""<s>[INST] Analyze the following technical interview transcript and provide a structured, evidence-based evaluation.
+
+**Rubric Guidelines:**
+- **Technical Score (1-10):** 
+    - 9-10: Deep understanding, optimal solutions, mentions trade-offs.
+    - 6-8: Competent, correct answers but lacks depth.
+    - 1-5: Incorrect, vague, or "I don't know" answers.
+- **Communication Score (1-10):** Clarity, conciseness, and ability to explain complex topics.
+- **Problem Solving (1-10):** Approach to unknown problems, debugging mindset.
+- **Experience Match (1-10):** Alignment with modern standards and practices shown in transcript.
+
+**Instructions:**
+- Be critical. Do not give high scores (8+) unless explicitly demonstrated.
+- Cite specific examples from the transcript in your strengths/weaknesses.
+- If the transcript is short or the candidate is evasive, lower the scores accordingly.
+
+Return only a valid JSON object with the following REQUIRED fields:
+- technical_score (integer)
+- communication_score (integer)
+- problem_solving_score (integer)
+- experience_match_score (integer)
 - strengths (list of strings)
 - weaknesses (list of strings)
 - summary (string)
@@ -170,13 +191,27 @@ TRANSCRIPT:
 
         output = llm(eval_prompt, max_tokens=1024, stop=["</s>"], echo=False)
         eval_json_str = output["choices"][0]["text"].strip()
+        print(f"DEBUG: Raw LLM Output: {eval_json_str}", flush=True)
         
-        # Extract JSON from potential prose
+        # Extract JSON from potential prose or markdown blocks
         match = re.search(r'\{.*\}', eval_json_str, re.DOTALL)
         if match:
-            evaluation = json.loads(match.group())
+            try:
+                evaluation = json.loads(match.group())
+                # Enforce defaults for all required fields
+                evaluation.setdefault('technical_score', 0)
+                evaluation.setdefault('communication_score', 0)
+                evaluation.setdefault('problem_solving_score', 0)
+                evaluation.setdefault('experience_match_score', 0)
+                evaluation.setdefault('strengths', [])
+                evaluation.setdefault('weaknesses', [])
+                evaluation.setdefault('summary', "No summary provided.")
+            except json.JSONDecodeError:
+                 # Try to fix common JSON errors if needed, or just fail gracefully
+                 print(f"JSON Decode Error on: {match.group()}", flush=True)
+                 raise ValueError("Could not parse LLM evaluation as JSON")
         else:
-            raise ValueError("Could not parse LLM evaluation as JSON")
+            raise ValueError("Could not find JSON object in LLM output")
 
         # 3. Generate PDF
         pdf = ReportPDF()
@@ -186,10 +221,10 @@ TRANSCRIPT:
         
         # Score Grid
         pdf.set_font('Arial', 'B', 10)
-        pdf.cell(90, 10, f"Technical Depth: {evaluation.get('technical_score')}/10", 1, 0)
-        pdf.cell(90, 10, f"Communication: {evaluation.get('communication_score')}/10", 1, 1)
-        pdf.cell(90, 10, f"Problem Solving: {evaluation.get('problem_solving_score')}/10", 1, 0)
-        pdf.cell(90, 10, f"Experience Match: {evaluation.get('experience_match_score')}/10", 1, 1)
+        pdf.cell(90, 10, f"Technical Depth: {evaluation['technical_score']}/10", 1, 0)
+        pdf.cell(90, 10, f"Communication: {evaluation['communication_score']}/10", 1, 1)
+        pdf.cell(90, 10, f"Problem Solving: {evaluation['problem_solving_score']}/10", 1, 0)
+        pdf.cell(90, 10, f"Experience Match: {evaluation['experience_match_score']}/10", 1, 1)
         
         pdf.ln(5)
         pdf.set_font('Arial', 'B', 11)
