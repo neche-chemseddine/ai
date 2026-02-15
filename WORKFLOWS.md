@@ -42,32 +42,38 @@ The interview interaction is powered by Retrieval-Augmented Generation (RAG) to 
 
 ```mermaid
 graph TD
-    User((Candidate)) -- 1. candidate_message --> Gateway[API Gateway]
-    Gateway -- 2. Save Message --> DB[(PostgreSQL)]
-    Gateway -- 3. Request Generate --> AI[AI Service]
+    User((Candidate)) -- 1. Connects --> UI[Show Start Screen]
+    UI -- 2. Clicks Start --> Gateway[API Gateway]
+    Gateway -- 3. Request Init --> AI[AI Service]
+    AI -- 4. Return Opener --> Gateway
+    Gateway -- 5. interviewer_message --> User
+    User -- 6. candidate_message --> Gateway
+    Gateway -- 7. Save & Request Generate --> AI
     
     subgraph RAG Cycle
-        AI -- 4. Embed Question --> Embed[MiniLM]
-        AI -- 5. Search Context --> Qdrant[(Qdrant)]
-        Qdrant -- 6. Return CV Chunks --> AI
-        AI -- 7. Prompt + Context --> LLM[Mistral-7B]
+        AI -- 8. Embed Context --> Qdrant[(Qdrant)]
+        AI -- 9. Prompt + Context --> LLM[Mistral-7B]
     end
     
-    LLM -- 8. Response --> AI
-    AI -- 9. Return Text --> Gateway
-    Gateway -- 10. interviewer_message --> User
+    LLM -- 10. Response --> AI
+    AI -- 11. Return Text --> Gateway
+    Gateway -- 12. interviewer_message --> User
 ```
 
-1.  **Candidate Message**: The user sends a message via WebSockets (`candidate_message`).
-2.  **Gateway**:
-    *   Persists the user's message to PostgreSQL.
-    *   Emits `interviewer_typing: true` to the frontend.
-    *   Sends a request to the AI Service's `/v1/chat/generate` endpoint.
+1.  **Session Initiation**:
+    *   Candidate opens the unique link and connects via WebSockets.
+    *   UI displays a welcoming interface with a **"Start Interview"** button.
+    *   When clicked, the client emits `start_interview`.
+    *   **Gateway**: Triggers an "Initialization" call to the AI Service.
+    *   **AI Service**: Generates a personalized greeting and the first technical question based on CV context.
+    *   **User**: Receives the first message and the input field is enabled.
+2.  **Standard Interaction**:
+    *   The user sends a message via WebSockets (`candidate_message`).
+    *   Gateway persists the message and increments progress counter.
 3.  **AI Service (RAG)**:
-    *   **Retrieval**: Embeds the candidate's latest message and searches **Qdrant** for the top 3 most relevant CV chunks (filtered by `cv_session_id`).
-    *   **Augmentation**: Injects these chunks into a system prompt defining the technical interviewer persona.
-    *   **Generation**: The **Mistral-7B-Instruct** LLM generates a response based on the context and conversation history.
-4.  **Gateway**: Receives the generated text, saves it as an 'assistant' message, and emits `interviewer_message` to the client.
+    *   **Retrieval**: Embeds the candidate's latest message and searches **Qdrant** for relevant context.
+    *   **Generation**: LLM generates a response constrained to one question at a time.
+4.  **Auto-Closure**: Once the question limit is reached, the Gateway triggers the Evaluation pipeline and notifies the user.
 
 ---
 

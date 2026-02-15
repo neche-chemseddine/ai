@@ -27,7 +27,7 @@ MODEL_PATH = hf_hub_download(
     repo_id="TheBloke/Mistral-7B-Instruct-v0.2-GGUF",
     filename="mistral-7b-instruct-v0.2.Q4_K_M.gguf"
 )
-llm = Llama(model_path=MODEL_PATH, n_ctx=2048, n_threads=4)
+llm = Llama(model_path=MODEL_PATH, n_ctx=4096, n_threads=4)
 print("LLM Loaded.")
 
 COLLECTION_NAME = "cv_chunks"
@@ -37,7 +37,9 @@ os.makedirs(REPORTS_DIR, exist_ok=True)
 class ChatRequest(BaseModel):
     cv_session_id: str
     message: str
+    cv_summary: Optional[str] = None
     history: List[dict] = []
+    is_init: bool = False
 
 class EvaluationRequest(BaseModel):
     candidate_name: str
@@ -101,10 +103,16 @@ async def parse_cv(file: UploadFile = File(...)):
             points=points
         )
         
+        # Generate CV Summary for persistent context
+        summary_prompt = f"[INST] Summarize this CV in 3-4 bullet points focusing on technical stack and seniority. Limit to 100 words.\n\nCV TEXT:\n{text[:2000]} [/INST]"
+        summary_output = llm(summary_prompt, max_tokens=200, stop=["</s>"], echo=False)
+        cv_summary = summary_output["choices"][0]["text"].strip()
+
         return {
             "filename": file.filename,
             "cv_session_id": cv_session_id,
             "chunk_count": len(chunks),
+            "cv_summary": cv_summary,
             "preview": chunks[:3]
         }
     except Exception as e:
@@ -114,7 +122,31 @@ async def parse_cv(file: UploadFile = File(...)):
 @app.post("/v1/chat/generate")
 async def generate_response(request: ChatRequest):
     try:
-        query_vector = embed_model.encode(request.message).tolist()
+        # 1. Determine Interview Phase based on history length
+        history_len = len(request.history)
+        if history_len < 2:
+            phase = "VERIFICATION (Confirming CV facts)"
+        elif history_len < 6:
+            phase = "BREADTH (Scanning technical skills)"
+        elif history_len < 12:
+            phase = "DEPTH (Deep dive into complex projects)"
+        else:
+            phase = "SCENARIO (Problem solving & architecture)"
+
+        # 2. Context Retrieval Strategy (Query Expansion)
+        search_query = request.message
+        if request.history:
+            # Ask LLM to generate a search query for the vector DB based on history
+            expansion_prompt = f"""[INST] Based on the following conversation, generate a short (3-5 words) search query to find relevant technical details in the candidate's CV.
+History:
+{request.history[-2:]}
+Latest: {request.message}
+Query: [/INST]"""
+            expansion_output = llm(expansion_prompt, max_tokens=20, stop=["\n"], echo=False)
+            search_query = expansion_output["choices"][0]["text"].strip().strip('"')
+            print(f"DEBUG: Expanded Search Query: {search_query}", flush=True)
+
+        query_vector = embed_model.encode(search_query).tolist()
         search_result = qdrant_client.query_points(
             collection_name=COLLECTION_NAME,
             query=query_vector,
@@ -126,25 +158,57 @@ async def generate_response(request: ChatRequest):
                     )
                 ]
             ),
-            limit=3
+            limit=5  # Increased from 3 to 5 for better context
         ).points
         
-        context = "\n".join([hit.payload["text"] for hit in search_result])
+        context = "\n".join([f"- {hit.payload['text']}" for hit in search_result])
         
-        system_prompt = f"""You are an expert technical interviewer. 
-Use the following CV context to interview the candidate. 
-Be professional, concise, and ask relevant technical questions.
+        # 3. System Prompt Construction
+        cv_summary_text = f"\nCV SUMMARY (Holistic View):\n{request.cv_summary}" if request.cv_summary else ""
+        system_prompt = f"""You are a Senior Principal Engineer conducting a strict technical interview.
+Current Phase: {phase}
 
-CV CONTEXT:
+CORE RULES:
+1. LEAD THE INTERVIEW. Ask exactly ONE sharp, technical question per turn.
+2. PROBE DEEPER: If the candidate's answer is vague or short, do not move on. Ask "How" or "Why".
+3. NO FLUFF: Be extremely concise (max 2 sentences). No "Great", "Excellent", or "I see".
+4. REDIRECT: If the candidate is off-topic or asks you a question, firmly bring them back to your technical question.
+5. NEVER reveal you are an AI. Never include meta-commentary or notes.
+{cv_summary_text}
+
+CV CONTEXT (Specific details for current turn):
 {context}
 """
-        full_prompt = f"<s>[INST] {system_prompt}\n\nCandidate: {request.message} [/INST]"
-        
-        output = llm(full_prompt, max_tokens=256, stop=["[INST]", "</s>"], echo=False)
+
+        # 4. Mistral-7B History Formatting ([INST] Instruction [/INST] Model answer</s>[INST] Follow-up [/INST])
+        if request.is_init:
+            full_prompt = f"[INST] {system_prompt}\n\nGreet the candidate and start the {phase} phase with one question. [/INST]"
+        else:
+            # Reconstruct history in Mistral format
+            formatted_history = ""
+            for i, msg in enumerate(request.history):
+                role = msg.get("role")
+                content = msg.get("content")
+                if role == "user":
+                    formatted_history += f"[INST] {content} [/INST] "
+                else:
+                    formatted_history += f"{content} </s>"
+            
+            full_prompt = f"[INST] {system_prompt} [/INST] {formatted_history} [INST] {request.message} [/INST]"
+
+        print(f"DEBUG: Full Prompt Length: {len(full_prompt)}", flush=True)
+        output = llm(full_prompt, max_tokens=150, stop=["[INST]", "</s>", "Note:", "Interviewer:"], echo=False)
         response_text = output["choices"][0]["text"].strip()
+        
+        # Final cleanup
+        response_text = re.sub(r"\(?Note:.*", "", response_text, flags=re.IGNORECASE).strip()
+        response_text = response_text.replace("Assistant:", "").replace("Interviewer:", "").strip()
         
         return {"response": response_text}
     except Exception as e:
+        import traceback
+        traceback.print_exc()
+        print(f"Error in generate_response: {e}", flush=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/v1/report/generate")
@@ -153,63 +217,113 @@ async def generate_report(request: EvaluationRequest):
         # 1. Prepare Transcript for LLM
         transcript_text = "\n".join([f"{m['role'].upper()}: {m['content']}" for m in request.transcript])
         
-        # 2. Ask LLM to evaluate
-        eval_prompt = f"""<s>[INST] Analyze the following technical interview transcript and provide a structured evaluation.
-Return only a JSON object with the following fields:
-- technical_score (1-10)
-- communication_score (1-10)
-- problem_solving_score (1-10)
-- experience_match_score (1-10)
-- strengths (list of strings)
-- weaknesses (list of strings)
-- summary (string)
+        # 2. Ask LLM to evaluate with Chain-of-Thought (CoT)
+        eval_prompt = f"""[INST] You are an Elite Technical Bar-Raiser. Evaluate this technical interview transcript with extreme skepticism.
+
+**STRICT CRITICAL RULES:**
+1. ANALYZE FIRST: Before giving scores, write a short "Auditor Note" for each turn identifying if the candidate was vague, technically incorrect, or evasive.
+2. PENALIZE HEAVILY:
+   - Surface-level answers (buzzwords without "how/why") = Max 3/10.
+   - Repeating information or dodging questions = 0/10 for that section.
+   - Discrepancy between CV claims and interview performance = Flag as "High Risk".
+3. EVIDENCE REQUIRED: For every strength and weakness, you MUST include a direct quote from the candidate.
 
 TRANSCRIPT:
 {transcript_text}
+
+Output ONLY a valid JSON object in this format:
+{{
+    "auditor_notes": "Your internal critique of the candidate's honesty and depth...",
+    "technical_score": int,
+    "communication_score": int,
+    "problem_solving_score": int,
+    "experience_match_score": int,
+    "strengths": ["Strength description [Quote from transcript]"],
+    "weaknesses": ["Weakness description [Quote from transcript]"],
+    "proven_skills": ["Skill name - Evidence level (Low/Med/High)"],
+    "summary": "Realistic executive summary including hiring recommendation (Hire/No Hire)."
+}}
 [/INST]"""
 
-        output = llm(eval_prompt, max_tokens=1024, stop=["</s>"], echo=False)
+        output = llm(eval_prompt, max_tokens=2048, stop=["</s>"], echo=False)
         eval_json_str = output["choices"][0]["text"].strip()
+        print(f"DEBUG: Raw LLM Output: {eval_json_str}", flush=True)
         
-        # Extract JSON from potential prose
-        match = re.search(r'\{.*\}', eval_json_str, re.DOTALL)
-        if match:
-            evaluation = json.loads(match.group())
-        else:
-            raise ValueError("Could not parse LLM evaluation as JSON")
+        # Robust JSON extraction
+        try:
+            start_idx = eval_json_str.find('{')
+            end_idx = eval_json_str.rfind('}')
+            
+            if start_idx != -1:
+                json_str = eval_json_str[start_idx:end_idx+1]
+                evaluation = json.loads(json_str)
+            else:
+                 raise ValueError("Could not find { in LLM output")
+        except Exception as e:
+            print(f"JSON Extraction Error: {e}. Raw: {eval_json_str}")
+            evaluation = {}
+
+        # Enforce defaults and realistic overrides
+        evaluation.setdefault('technical_score', 1)
+        evaluation.setdefault('communication_score', 1)
+        evaluation.setdefault('problem_solving_score', 1)
+        evaluation.setdefault('experience_match_score', 1)
+        evaluation.setdefault('auditor_notes', 'N/A')
+        evaluation.setdefault('summary', 'The evaluation failed due to insufficient data or LLM error.')
+        evaluation.setdefault('strengths', ['N/A'])
+        evaluation.setdefault('weaknesses', ['Analysis failed: Transcript likely too short or incoherent.'])
+        evaluation.setdefault('proven_skills', ['None detected'])
+
+        if len(request.transcript) < 4:
+            evaluation["summary"] = "NO HIRE: Interview was too short to establish any technical signal."
+            evaluation["technical_score"] = min(evaluation.get("technical_score", 1), 2)
 
         # 3. Generate PDF
         pdf = ReportPDF()
         pdf.add_page()
         pdf.set_font('Arial', 'B', 12)
-        pdf.cell(0, 10, f"Candidate: {request.candidate_name}", 0, 1)
+        pdf.cell(pdf.epw, 10, f"Candidate: {request.candidate_name}", 0, 1)
         
         # Score Grid
         pdf.set_font('Arial', 'B', 10)
-        pdf.cell(90, 10, f"Technical Depth: {evaluation.get('technical_score')}/10", 1, 0)
-        pdf.cell(90, 10, f"Communication: {evaluation.get('communication_score')}/10", 1, 1)
-        pdf.cell(90, 10, f"Problem Solving: {evaluation.get('problem_solving_score')}/10", 1, 0)
-        pdf.cell(90, 10, f"Experience Match: {evaluation.get('experience_match_score')}/10", 1, 1)
+        col_width = pdf.epw / 4
+        pdf.cell(col_width, 10, f"Technical: {evaluation['technical_score']}/10", 1, 0)
+        pdf.cell(col_width, 10, f"Comm: {evaluation['communication_score']}/10", 1, 0)
+        pdf.cell(col_width, 10, f"Problem: {evaluation['problem_solving_score']}/10", 1, 0)
+        pdf.cell(col_width, 10, f"Match: {evaluation['experience_match_score']}/10", 1, 1)
         
         pdf.ln(5)
         pdf.set_font('Arial', 'B', 11)
-        pdf.cell(0, 10, "Executive Summary:", 0, 1)
+        pdf.cell(pdf.epw, 10, "Auditor Review Notes:", 0, 1)
+        pdf.set_font('Arial', 'I', 10)
+        pdf.multi_cell(pdf.epw, 6, evaluation['auditor_notes'])
+
+        pdf.ln(5)
+        pdf.set_font('Arial', 'B', 11)
+        pdf.cell(pdf.epw, 10, "Executive Summary & Recommendation:", 0, 1)
         pdf.set_font('Arial', '', 11)
-        pdf.multi_cell(0, 8, evaluation.get('summary', 'No summary provided.'))
+        pdf.multi_cell(pdf.epw, 7, evaluation['summary'])
         
         pdf.ln(5)
         pdf.set_font('Arial', 'B', 11)
-        pdf.cell(0, 10, "Key Strengths:", 0, 1)
-        pdf.set_font('Arial', '', 11)
-        for s in evaluation.get('strengths', []):
-            pdf.cell(0, 8, f"- {s}", 0, 1)
+        pdf.cell(pdf.epw, 10, "Proven Technical Skills (Evidence-Based):", 0, 1)
+        pdf.set_font('Arial', '', 10)
+        for skill in evaluation['proven_skills']:
+            pdf.cell(pdf.epw, 7, f"* {skill}", 0, 1)
+
+        pdf.ln(5)
+        pdf.set_font('Arial', 'B', 11)
+        pdf.cell(pdf.epw, 10, "Key Strengths:", 0, 1)
+        pdf.set_font('Arial', '', 10)
+        for s in evaluation['strengths']:
+            pdf.multi_cell(pdf.epw, 6, f"+ {s}")
             
         pdf.ln(5)
         pdf.set_font('Arial', 'B', 11)
-        pdf.cell(0, 10, "Areas for Improvement:", 0, 1)
-        pdf.set_font('Arial', '', 11)
-        for w in evaluation.get('weaknesses', []):
-            pdf.cell(0, 8, f"- {w}", 0, 1)
+        pdf.cell(pdf.epw, 10, "Critical Weaknesses:", 0, 1)
+        pdf.set_font('Arial', '', 10)
+        for w in evaluation['weaknesses']:
+            pdf.multi_cell(pdf.epw, 6, f"- {w}")
 
         report_filename = f"report_{uuid.uuid4()}.pdf"
         report_path = os.path.join(REPORTS_DIR, report_filename)

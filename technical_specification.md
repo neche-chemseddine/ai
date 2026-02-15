@@ -32,6 +32,7 @@ CREATE TABLE interviews (
     candidate_name TEXT,
     cv_url TEXT,
     status TEXT, -- pending, active, completed
+    question_count INTEGER DEFAULT 0,
     rubric JSONB,
     report_url TEXT
 );
@@ -51,10 +52,22 @@ CREATE TABLE messages (
 *   `GET /api/v1/reports/:interview_id`: Fetch generated evaluation.
 
 ## 5. WebSocket Design (Interview Session)
-*   `EVENT: candidate_message`: Sent by client when candidate submits answer.
-*   `EVENT: interviewer_typing`: Sent by server to show activity.
-*   `EVENT: interviewer_message`: The LLM-generated response.
-*   `EVENT: session_end`: Triggered by AI when it has enough info.
+*   **EVENT: candidate_message**: Sent by client when candidate submits answer.
+*   **EVENT: start_interview**: Sent by client when candidate clicks "Start Interview".
+*   **EVENT: interviewer_typing**: Sent by server to show activity.
+*   **EVENT: interviewer_message**: The LLM-generated response.
+*   **EVENT: session_completed**: Emitted when the question limit is reached.
+*   **Logic Flow:**
+    1.  **Preparation:** Candidate connects to WebSocket (no automated message).
+    2.  **Trigger:** Candidate emits `start_interview`.
+    3.  **Initiation:** Gateway calls AI Service with `is_init: true`, which starts the **VERIFICATION** phase.
+    4.  **Phase Progression:** The AI Service automatically transitions through phases based on history length:
+        - **VERIFICATION** (0-2 messages)
+        - **BREADTH** (2-6 messages)
+        - **DEPTH** (6-12 messages)
+        - **SCENARIO** (12+ messages)
+    5.  **Turn-Taking:** Gateway receives `candidate_message` and increments `question_count`.
+    6.  **Termination:** If `count == limit`, requests a concluding message and triggers the **Brutal Evaluation** pipeline.
 
 ## 6. CV Processing Pipeline
 1.  **Extract:** Python service extracts text from PDF using `PyMuPDF`.

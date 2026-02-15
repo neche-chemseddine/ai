@@ -2,7 +2,7 @@ import React, { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { interviewService } from '../services/interview.service';
 import { io, Socket } from 'socket.io-client';
-import { Send, Bot, AlertCircle, Info, ChevronLeft, Sparkles } from 'lucide-react';
+import { Send, Bot, AlertCircle, Info, ChevronLeft, Sparkles, Loader2, CheckCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
@@ -18,6 +18,9 @@ const CandidateInterview = () => {
   const [messages, setMessages] = useState<any[]>([]);
   const [inputText, setInputText] = useState('');
   const [isTyping, setIsTyping] = useState(false);
+  const [hasStarted, setHasStarted] = useState(false);
+  const [isSessionCompleted, setIsSessionCompleted] = useState(false);
+  const [isGeneratingReport, setIsGeneratingReport] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const socketRef = useRef<Socket | null>(null);
@@ -34,6 +37,15 @@ const CandidateInterview = () => {
       try {
         const data = await interviewService.getSession(token);
         setInterview(data);
+        
+        if (data.status === 'completed' || (data.messages && data.messages.length > 0)) {
+          setHasStarted(true);
+        }
+
+        if (data.status === 'completed') {
+          setIsSessionCompleted(true);
+        }
+
         if (data.messages) {
           setMessages(data.messages.map((m: any) => ({
             role: m.role,
@@ -42,15 +54,25 @@ const CandidateInterview = () => {
         }
 
         const socketUrl = import.meta.env.VITE_SOCKET_URL || 'http://localhost:3000';
-        socketRef.current = io(socketUrl);
+        const socket = io(socketUrl);
+        socketRef.current = socket;
 
-        socketRef.current.on('interviewer_message', (data) => {
+        socket.on('interviewer_message', (data) => {
           setMessages(prev => [...prev, { role: 'assistant', text: data.text }]);
           setIsTyping(false);
         });
 
-        socketRef.current.on('interviewer_typing', (data) => {
+        socket.on('interviewer_typing', (data) => {
           setIsTyping(data.typing);
+        });
+
+        socket.on('session_completed', () => {
+          setIsSessionCompleted(true);
+          setIsGeneratingReport(true);
+        });
+
+        socket.on('report_ready', () => {
+          setIsGeneratingReport(false);
         });
 
         setLoading(false);
@@ -69,9 +91,16 @@ const CandidateInterview = () => {
 
   useEffect(scrollToBottom, [messages, isTyping]);
 
+  const handleStartInterview = () => {
+    if (socketRef.current && interview) {
+      setHasStarted(true);
+      socketRef.current.emit('start_interview', { interviewId: interview.id });
+    }
+  };
+
   const handleSend = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!inputText.trim() || !socketRef.current || !interview) return;
+    if (!inputText.trim() || !socketRef.current || !interview || isSessionCompleted || !hasStarted) return;
 
     const text = inputText.trim();
     setInputText('');
@@ -99,7 +128,7 @@ const CandidateInterview = () => {
   if (error) {
     return (
       <div className="h-screen bg-background flex items-center justify-center p-6 text-center">
-        <Card variant="outline" className="max-w-md w-full">
+        <Card className="max-w-md w-full">
           <CardHeader>
             <div className="flex justify-center mb-4 text-destructive">
               <AlertCircle size={32} />
@@ -143,20 +172,43 @@ const CandidateInterview = () => {
       <main className="flex-1 overflow-hidden flex flex-col relative bg-muted/30">
         <ScrollArea className="flex-1 px-4 py-8 md:px-6">
           <div className="max-w-4xl mx-auto space-y-10 pb-10">
-            {messages.length === 0 && (
-              <div className="flex flex-col items-center justify-center py-24 text-center">
+            {!hasStarted && !isSessionCompleted && (
+              <div className="flex flex-col items-center justify-center py-24 text-center animate-in fade-in zoom-in duration-700">
                 <div className="bg-card size-20 rounded-3xl flex items-center justify-center shadow-xl mb-6 border">
-                  <Bot size={40} />
+                  <Bot size={40} className="text-primary" />
                 </div>
-                <h3 className="text-xl font-bold">Welcome to your interview</h3>
+                <h3 className="text-xl font-bold">Ready to start?</h3>
                 <p className="text-sm text-muted-foreground mt-2 max-w-[300px]">
-                  The AI interviewer is ready. Send a message whenever you're prepared to begin.
+                  Once you click the button, the AI interviewer will begin the session.
                 </p>
-                <Button className="mt-8" onClick={() => {
-                  setInputText('Hello! I am ready to start the interview.');
-                }}>
-                  Start Conversation
+                <Button className="mt-8" onClick={handleStartInterview}>
+                  Start Interview
                 </Button>
+              </div>
+            )}
+
+            {isSessionCompleted && messages.length > 0 && (
+              <div className="flex justify-center mb-8 animate-in zoom-in duration-500">
+                <Card className="w-full max-w-md border-none shadow-lg bg-primary text-primary-foreground">
+                  <CardHeader className="text-center pb-2">
+                    <div className="flex justify-center mb-2">
+                      <div className="bg-white/20 p-2 rounded-full">
+                        {isGeneratingReport ? <Loader2 className="animate-spin" size={24} /> : <CheckCircle size={24} />}
+                      </div>
+                    </div>
+                    <CardTitle className="text-xl">Session Concluded</CardTitle>
+                    <CardDescription className="text-primary-foreground/80">
+                      {isGeneratingReport 
+                        ? "Please wait while our AI finalizes your technical assessment report..." 
+                        : "Your interview is complete. The recruiter has been notified."}
+                    </CardDescription>
+                  </CardHeader>
+                  {!isGeneratingReport && (
+                    <CardContent className="text-center pt-2">
+                      <p className="text-xs font-medium opacity-70">You can now close this window.</p>
+                    </CardContent>
+                  )}
+                </Card>
               </div>
             )}
             
@@ -201,12 +253,13 @@ const CandidateInterview = () => {
             <Input 
               value={inputText}
               onChange={(e) => setInputText(e.target.value)}
-              placeholder="Type your response here..."
+              placeholder={isSessionCompleted ? "Interview session closed" : (!hasStarted ? "Click Start to begin" : "Type your response here...")}
               className="h-16 pr-20"
+              disabled={isSessionCompleted || !hasStarted}
             />
             <Button 
               type="submit"
-              disabled={!inputText.trim()}
+              disabled={!inputText.trim() || isSessionCompleted || !hasStarted}
               className="absolute right-2 top-2 h-12 w-12"
             >
               <Send size={20} />

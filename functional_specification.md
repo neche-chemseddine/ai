@@ -21,6 +21,15 @@
 
 ### 2.3. AI Interview Engine (The "Interviewer")
 *   **Description:** Real-time chat interface where AI asks questions and reacts to answers.
+*   **Candidate-Triggered Initiation:**
+    -   The interview starts only when the candidate clicks the "Start Interview" button.
+    -   Upon clicking, the AI immediately takes the lead by sending a personalized greeting and the first technical question.
+    -   This ensures the candidate is prepared and focused before the assessment begins.
+*   **Structured Flow:**
+    -   **Single Question Rule:** The AI must only ask one technical question at a time.
+    -   **Progress Tracking:** The system tracks the number of questions answered.
+    -   **Session Limit:** The interview automatically concludes after 3 answered questions (configurable up to 10).
+    -   **Auto-Completion:** Once the limit is reached, the session is locked, and the evaluation report is generated immediately.
 *   **User Story:** As a candidate, I want to have a conversation that feels natural and technically challenging.
 *   **Acceptance Criteria:** Latency < 2s for response generation. Ability to handle "I don't know" or clarifying questions from the candidate.
 *   **Failure Scenario:** LLM hallucination or loop (requires a "session monitor" to reset if detected).

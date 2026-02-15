@@ -23,6 +23,9 @@ export class Interview {
   @Column({ default: 'pending' })
   status: string; // pending, active, completed
 
+  @Column({ default: 0 })
+  question_count: number;
+
   @Column({ type: 'jsonb', nullable: true })
   rubric: any;
 

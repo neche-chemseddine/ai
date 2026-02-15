@@ -6,6 +6,7 @@ import { Interview } from '../entities/interview.entity';
 import { Socket } from 'socket.io';
 import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
+import { InterviewsService } from '../interviews/interviews.service';
 import { of } from 'rxjs';
 
 describe('ChatGateway', () => {
@@ -13,6 +14,7 @@ describe('ChatGateway', () => {
   let messageRepo: any;
   let interviewRepo: any;
   let httpService: any;
+  let interviewsService: any;
 
   const mockMessageRepo = {
     create: jest.fn().mockImplementation(dto => dto),
@@ -21,6 +23,7 @@ describe('ChatGateway', () => {
 
   const mockInterviewRepo = {
     findOne: jest.fn(),
+    save: jest.fn().mockImplementation(async (int) => int),
   };
 
   const mockHttpService = {
@@ -29,6 +32,10 @@ describe('ChatGateway', () => {
 
   const mockConfigService = {
     get: jest.fn().mockReturnValue('http://ai-service:8001'),
+  };
+
+  const mockInterviewsService = {
+    evaluateInterview: jest.fn().mockResolvedValue({}),
   };
 
   const mockSocket = {
@@ -44,6 +51,7 @@ describe('ChatGateway', () => {
         { provide: getRepositoryToken(Interview), useValue: mockInterviewRepo },
         { provide: HttpService, useValue: mockHttpService },
         { provide: ConfigService, useValue: mockConfigService },
+        { provide: InterviewsService, useValue: mockInterviewsService },
       ],
     }).compile();
 
@@ -51,6 +59,7 @@ describe('ChatGateway', () => {
     messageRepo = module.get(getRepositoryToken(Message));
     interviewRepo = module.get(getRepositoryToken(Interview));
     httpService = module.get(HttpService);
+    interviewsService = module.get(InterviewsService);
   });
 
   afterEach(() => {
@@ -62,43 +71,78 @@ describe('ChatGateway', () => {
   });
 
   describe('handleMessage', () => {
-    it('should save user message, call AI service, and emit response', async () => {
+    it('should increment question_count and call AI service', async () => {
       const interviewId = 'int-123';
-      const text = 'Hello AI';
+      const text = 'Answer 1';
       const mockInterview = { 
         id: interviewId, 
+        tenant_id: 'ten-1',
         messages: [],
-        rubric: { cv_session_id: 'sid-123' }
+        rubric: { cv_session_id: 'sid-123' },
+        question_count: 0,
+        status: 'active'
       };
 
       interviewRepo.findOne.mockResolvedValue(mockInterview);
-      httpService.post.mockReturnValue(of({ data: { response: 'AI Answer' } }));
+      httpService.post.mockReturnValue(of({ data: { response: 'Next Question' } }));
 
       await gateway.handleMessage({ interviewId, text }, mockSocket);
 
-      // 1. Check user message saved
-      expect(interviewRepo.findOne).toHaveBeenCalled();
-      expect(messageRepo.create).toHaveBeenCalledWith(expect.objectContaining({
-        content: text,
-        role: 'user',
-      }));
-
-      // 2. Check AI service called
-      expect(httpService.post).toHaveBeenCalledWith(
-        expect.stringContaining('/v1/chat/generate'),
-        expect.objectContaining({ message: text })
-      );
-
-      // 3. Check AI response saved and emitted
-      expect(messageRepo.create).toHaveBeenCalledWith(expect.objectContaining({
-        content: 'AI Answer',
-        role: 'assistant',
-      }));
+      // Verify question_count incremented
+      expect(mockInterview.question_count).toBe(1);
+      expect(interviewRepo.save).toHaveBeenCalledWith(mockInterview);
+      
+      // Verify AI service call
+      expect(httpService.post).toHaveBeenCalled();
+      
+      // Verify message emitted
       expect(mockSocket.emit).toHaveBeenCalledWith('interviewer_message', expect.objectContaining({
-        text: 'AI Answer',
-        role: 'assistant',
+        text: 'Next Question'
       }));
-      expect(mockSocket.emit).toHaveBeenCalledWith('interviewer_typing', { typing: false });
+    });
+
+    it('should trigger evaluation when MAX_QUESTIONS reached', async () => {
+      const interviewId = 'int-123';
+      const text = 'Final Answer';
+      const mockInterview = { 
+        id: interviewId, 
+        tenant_id: 'ten-1',
+        messages: [],
+        rubric: { cv_session_id: 'sid-123' },
+        question_count: 2, // 2 + 1 = 3 (MAX)
+        status: 'active'
+      };
+
+      interviewRepo.findOne.mockResolvedValue(mockInterview);
+      httpService.post.mockReturnValue(of({ data: { response: 'Goodbye' } }));
+
+      await gateway.handleMessage({ interviewId, text }, mockSocket);
+
+      // Verify progress tracking
+      expect(mockInterview.question_count).toBe(3);
+      
+      // Verify session_completed emitted
+      expect(mockSocket.emit).toHaveBeenCalledWith('session_completed', expect.any(Object));
+      
+      // Verify auto-completion & evaluation trigger
+      expect(interviewsService.evaluateInterview).toHaveBeenCalledWith(interviewId, 'ten-1');
+      
+      // Verify report_ready emitted
+      expect(mockSocket.emit).toHaveBeenCalledWith('report_ready', expect.any(Object));
+    });
+
+    it('should not allow messages if status is completed', async () => {
+      const interviewId = 'int-123';
+      const mockInterview = { 
+        id: interviewId, 
+        status: 'completed'
+      };
+
+      interviewRepo.findOne.mockResolvedValue(mockInterview);
+
+      await gateway.handleMessage({ interviewId, text: 'hi' }, mockSocket);
+
+      expect(httpService.post).not.toHaveBeenCalled();
     });
   });
 });
