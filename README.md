@@ -1,4 +1,4 @@
-# IntelliView AI - Phase 1 Core Engine
+# IntelliView AI - Intelligent Technical Interview Platform
 
 ## Project Structure
 - `backend/gateway`: NestJS API Gateway (Node.js)
@@ -42,10 +42,28 @@ npm run dev
 - [Technical Specification](technical_specification.md)
 - [MVP Plan](mvp_plan.md)
 - [Core Workflows](WORKFLOWS.md)
+- [Quality Audit Report](AI_QUALITY_REPORT.md)
+- [MVP Improvement Proposal](mvp_improvement_proposal.md)
 
-## Phase 1 Progress
-- [x] Infrastructure Setup (Docker Config)
-- [x] CV Parsing (FastAPI + PyMuPDF)
-- [x] API Gateway (NestJS + TypeORM)
-- [x] Database Schema (Tenants, Interviews, Messages)
-- [x] WebSocket Chat (Socket.io)
+## Roadmap Progress
+
+### Phase 1: Core Engine (Complete)
+- [x] Infrastructure Setup (Postgres, Redis, Qdrant)
+- [x] CV Parsing & Vector Indexing (FastAPI + PyMuPDF)
+- [x] API Gateway Orchestration (NestJS)
+- [x] WebSocket Real-time Chat Implementation
+
+### Phase 2: Recruiter Experience (Complete)
+- [x] Multi-tenant Auth Management
+- [x] Interview Session Lifecycle (Link generation, expiry)
+- [x] Automated Report Pipeline (PDF Generation)
+- [x] Dashboard UI for Interview Management
+
+### Phase 3: AI Intelligence & Criticality (Advanced Refinement)
+- [x] **Phase-Aware Orchestration**: Structured progression (Verification -> Breadth -> Depth -> Scenario).
+- [x] **Intelligent Context**: LLM-based RAG query expansion and holistic CV summary injection.
+- [x] **Brutal Evaluator persona**: Skeptical, bar-raising analysis using Chain-of-Thought (CoT).
+- [x] **Evidence-Based Scoring**: Mandatory transcript quotes for all strengths and weaknesses.
+- [x] **Proven Skills Mapping**: Explicit detection of technical skills with evidence-based seniority levels.
+- [ ] Load Testing (Target: 100 concurrent sessions)
+- [ ] Public Beta Release
