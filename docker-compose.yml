@@ -33,6 +33,8 @@ services:
       - "8001:8001"
     environment:
       - QDRANT_HOST=qdrant
+      - GROQ_API_KEY=${GROQ_API_KEY}
+      - LLM_PROVIDER=groq
     volumes:
       - ./backend/ai_service:/app
     depends_on:

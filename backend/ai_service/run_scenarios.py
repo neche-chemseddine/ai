@@ -75,9 +75,9 @@ scenarios = [
         "name": "Strong Technical Candidate",
         "candidate": "Alice Tech",
         "answers": [
-            "I used FastAPI for the microservices because of its asynchronous capabilities and automatic OpenAPI documentation. It significantly improved our development speed.",
-            "For PostgreSQL optimization, I analyzed slow queries using EXPLAIN ANALYZE and added missing indexes, especially on frequently joined columns like user_id and tenant_id.",
-            "I use Docker Multi-stage builds to keep image sizes small and Kubernetes for orchestration, specifically using Helm charts for deployment."
+            "We used FastAPI because its type hinting with Pydantic reduced our runtime errors by 30%. I utilized dependency injection for database sessions, allowing us to swap the real PG session for a mock in our unit tests.",
+            "I used EXPLAIN (ANALYZE, BUFFERS) to optimize the query. The bottleneck was a sequential scan on a 5M row table; adding a B-tree index on the 'email' and 'created_at' columns reduced execution time from 500ms to 12ms.",
+            "In Kubernetes, I configured Horizontal Pod Autoscalers (HPA) using custom metrics from Prometheus. I set the target CPU utilization to 70% and used PodDisruptionBudgets to ensure high availability during node upgrades."
         ]
     },
     {
@@ -105,6 +105,15 @@ scenarios = [
             "Yes.",
             "No.",
             "Maybe."
+        ]
+    },
+    {
+        "name": "Perfect Candidate",
+        "candidate": "Sophia Architect",
+        "answers": [
+            "To achieve the 40% latency reduction, I first enabled pg_stat_statements to identify the top 5 most time-consuming queries. One major bottleneck was a nested loop join on the 'orders' and 'tenants' tables. I replaced it with a hash join by adjusting the work_mem and adding a composite index on (tenant_id, created_at DESC).",
+            "In FastAPI, I implemented a custom middleware for dependency injection and used SQLAlchemy 2.0 with asyncpg for true non-blocking database I/O. For connection pooling, I tuned the QueuePool to a max_overflow of 20 and a pool_size of 10 to handle the spike in traffic during our peak hours without exhausting the PG max_connections.",
+            "For the microservices communication, I avoided synchronous REST calls where possible and used a sidecar pattern with Envoy for service discovery. We used gRPC for internal high-throughput communication between the order service and the inventory service to reduce serialization overhead compared to JSON."
         ]
     }
 ]
