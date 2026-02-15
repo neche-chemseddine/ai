@@ -104,7 +104,7 @@ async def parse_cv(file: UploadFile = File(...)):
         )
         
         # Generate CV Summary for persistent context
-        summary_prompt = f"<s>[INST] Summarize this CV in 3-4 bullet points focusing on technical stack and seniority. Limit to 100 words.\n\nCV TEXT:\n{text[:2000]} [/INST]"
+        summary_prompt = f"[INST] Summarize this CV in 3-4 bullet points focusing on technical stack and seniority. Limit to 100 words.\n\nCV TEXT:\n{text[:2000]} [/INST]"
         summary_output = llm(summary_prompt, max_tokens=200, stop=["</s>"], echo=False)
         cv_summary = summary_output["choices"][0]["text"].strip()
 
@@ -137,7 +137,7 @@ async def generate_response(request: ChatRequest):
         search_query = request.message
         if request.history:
             # Ask LLM to generate a search query for the vector DB based on history
-            expansion_prompt = f"""<s>[INST] Based on the following conversation, generate a short (3-5 words) search query to find relevant technical details in the candidate's CV.
+            expansion_prompt = f"""[INST] Based on the following conversation, generate a short (3-5 words) search query to find relevant technical details in the candidate's CV.
 History:
 {request.history[-2:]}
 Latest: {request.message}
@@ -180,9 +180,9 @@ CV CONTEXT (Specific details for current turn):
 {context}
 """
 
-        # 4. Mistral-7B History Formatting (<s>[INST] Instruction [/INST] Model answer</s>[INST] Follow-up [/INST])
+        # 4. Mistral-7B History Formatting ([INST] Instruction [/INST] Model answer</s>[INST] Follow-up [/INST])
         if request.is_init:
-            full_prompt = f"<s>[INST] {system_prompt}\n\nGreet the candidate and start the {phase} phase with one question. [/INST]"
+            full_prompt = f"[INST] {system_prompt}\n\nGreet the candidate and start the {phase} phase with one question. [/INST]"
         else:
             # Reconstruct history in Mistral format
             formatted_history = ""
@@ -192,13 +192,9 @@ CV CONTEXT (Specific details for current turn):
                 if role == "user":
                     formatted_history += f"[INST] {content} [/INST] "
                 else:
-                    formatted_history += f"{content} </s><s>"
+                    formatted_history += f"{content} </s>"
             
-            # Remove trailing <s> if exists
-            if formatted_history.endswith("<s>"):
-                formatted_history = formatted_history[:-3]
-
-            full_prompt = f"<s>[INST] {system_prompt} [/INST] {formatted_history} [INST] {request.message} [/INST]"
+            full_prompt = f"[INST] {system_prompt} [/INST] {formatted_history} [INST] {request.message} [/INST]"
 
         print(f"DEBUG: Full Prompt Length: {len(full_prompt)}", flush=True)
         output = llm(full_prompt, max_tokens=150, stop=["[INST]", "</s>", "Note:", "Interviewer:"], echo=False)
@@ -222,7 +218,7 @@ async def generate_report(request: EvaluationRequest):
         transcript_text = "\n".join([f"{m['role'].upper()}: {m['content']}" for m in request.transcript])
         
         # 2. Ask LLM to evaluate with Chain-of-Thought (CoT)
-        eval_prompt = f"""<s>[INST] You are an Elite Technical Bar-Raiser. Evaluate this technical interview transcript with extreme skepticism.
+        eval_prompt = f"""[INST] You are an Elite Technical Bar-Raiser. Evaluate this technical interview transcript with extreme skepticism.
 
 **STRICT CRITICAL RULES:**
 1. ANALYZE FIRST: Before giving scores, write a short "Auditor Note" for each turn identifying if the candidate was vague, technically incorrect, or evasive.
@@ -265,18 +261,19 @@ Output ONLY a valid JSON object in this format:
                  raise ValueError("Could not find { in LLM output")
         except Exception as e:
             print(f"JSON Extraction Error: {e}. Raw: {eval_json_str}")
-            evaluation = {
-                "technical_score": 1,
-                "communication_score": 1,
-                "problem_solving_score": 1,
-                "experience_match_score": 1,
-                "strengths": ["N/A"],
-                "weaknesses": ["Analysis failed: Transcript likely too short or incoherent."],
-                "proven_skills": ["None detected"],
-                "summary": "The evaluation failed due to insufficient data or LLM error."
-            }
+            evaluation = {}
 
         # Enforce defaults and realistic overrides
+        evaluation.setdefault('technical_score', 1)
+        evaluation.setdefault('communication_score', 1)
+        evaluation.setdefault('problem_solving_score', 1)
+        evaluation.setdefault('experience_match_score', 1)
+        evaluation.setdefault('auditor_notes', 'N/A')
+        evaluation.setdefault('summary', 'The evaluation failed due to insufficient data or LLM error.')
+        evaluation.setdefault('strengths', ['N/A'])
+        evaluation.setdefault('weaknesses', ['Analysis failed: Transcript likely too short or incoherent.'])
+        evaluation.setdefault('proven_skills', ['None detected'])
+
         if len(request.transcript) < 4:
             evaluation["summary"] = "NO HIRE: Interview was too short to establish any technical signal."
             evaluation["technical_score"] = min(evaluation.get("technical_score", 1), 2)
@@ -285,47 +282,48 @@ Output ONLY a valid JSON object in this format:
         pdf = ReportPDF()
         pdf.add_page()
         pdf.set_font('Arial', 'B', 12)
-        pdf.cell(0, 10, f"Candidate: {request.candidate_name}", 0, 1)
+        pdf.cell(pdf.epw, 10, f"Candidate: {request.candidate_name}", 0, 1)
         
         # Score Grid
         pdf.set_font('Arial', 'B', 10)
-        pdf.cell(45, 10, f"Technical: {evaluation.get('technical_score', 0)}/10", 1, 0)
-        pdf.cell(45, 10, f"Comm: {evaluation.get('communication_score', 0)}/10", 1, 0)
-        pdf.cell(45, 10, f"Problem: {evaluation.get('problem_solving_score', 0)}/10", 1, 0)
-        pdf.cell(45, 10, f"Match: {evaluation.get('experience_match_score', 0)}/10", 1, 1)
+        col_width = pdf.epw / 4
+        pdf.cell(col_width, 10, f"Technical: {evaluation['technical_score']}/10", 1, 0)
+        pdf.cell(col_width, 10, f"Comm: {evaluation['communication_score']}/10", 1, 0)
+        pdf.cell(col_width, 10, f"Problem: {evaluation['problem_solving_score']}/10", 1, 0)
+        pdf.cell(col_width, 10, f"Match: {evaluation['experience_match_score']}/10", 1, 1)
         
         pdf.ln(5)
         pdf.set_font('Arial', 'B', 11)
-        pdf.cell(0, 10, "Auditor Review Notes:", 0, 1)
+        pdf.cell(pdf.epw, 10, "Auditor Review Notes:", 0, 1)
         pdf.set_font('Arial', 'I', 10)
-        pdf.multi_cell(0, 6, evaluation.get('auditor_notes', 'N/A'))
+        pdf.multi_cell(pdf.epw, 6, evaluation['auditor_notes'])
 
         pdf.ln(5)
         pdf.set_font('Arial', 'B', 11)
-        pdf.cell(0, 10, "Executive Summary & Recommendation:", 0, 1)
+        pdf.cell(pdf.epw, 10, "Executive Summary & Recommendation:", 0, 1)
         pdf.set_font('Arial', '', 11)
-        pdf.multi_cell(0, 7, evaluation.get('summary', 'N/A'))
+        pdf.multi_cell(pdf.epw, 7, evaluation['summary'])
         
         pdf.ln(5)
         pdf.set_font('Arial', 'B', 11)
-        pdf.cell(0, 10, "Proven Technical Skills (Evidence-Based):", 0, 1)
+        pdf.cell(pdf.epw, 10, "Proven Technical Skills (Evidence-Based):", 0, 1)
         pdf.set_font('Arial', '', 10)
-        for skill in evaluation.get('proven_skills', []):
-            pdf.cell(0, 7, f"* {skill}", 0, 1)
+        for skill in evaluation['proven_skills']:
+            pdf.cell(pdf.epw, 7, f"* {skill}", 0, 1)
 
         pdf.ln(5)
         pdf.set_font('Arial', 'B', 11)
-        pdf.cell(0, 10, "Key Strengths:", 0, 1)
+        pdf.cell(pdf.epw, 10, "Key Strengths:", 0, 1)
         pdf.set_font('Arial', '', 10)
-        for s in evaluation.get('strengths', []):
-            pdf.multi_cell(0, 6, f"+ {s}")
+        for s in evaluation['strengths']:
+            pdf.multi_cell(pdf.epw, 6, f"+ {s}")
             
         pdf.ln(5)
         pdf.set_font('Arial', 'B', 11)
-        pdf.cell(0, 10, "Critical Weaknesses:", 0, 1)
+        pdf.cell(pdf.epw, 10, "Critical Weaknesses:", 0, 1)
         pdf.set_font('Arial', '', 10)
-        for w in evaluation.get('weaknesses', []):
-            pdf.multi_cell(0, 6, f"- {w}")
+        for w in evaluation['weaknesses']:
+            pdf.multi_cell(pdf.epw, 6, f"- {w}")
 
         report_filename = f"report_{uuid.uuid4()}.pdf"
         report_path = os.path.join(REPORTS_DIR, report_filename)
