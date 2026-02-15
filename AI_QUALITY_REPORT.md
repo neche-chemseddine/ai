@@ -8,15 +8,19 @@
 
 ## 1. Executive Summary
 
-The AI Service has been significantly upgraded to address the "Memory Loss" and "Shallow Evaluation" issues. The system now uses a structured phase-based interview approach and a highly critical, evidence-based evaluation pipeline.
+The AI Service has been significantly upgraded to address the "Memory Loss" and "Shallow Evaluation" issues. The system has migrated to **Groq (Llama 3.3 70B)**, providing high-speed inference and architect-level technical nuance.
 
 ## 2. Improvements & Resolutions
 
-### A. Model Conversation & Memory (**RESOLVED**)
-- **Fix:** Implemented full Mistral-7B instruction formatting (`<s>[INST]...[/INST]`) for the entire history.
-- **Impact:** The AI now remembers its previous questions and can perform follow-up deep dives.
+### A. Model Performance & Inference Speed (**RESOLVED**)
+- **Fix:** Migrated from local GGUF models to **Groq Cloud**.
+- **Impact:** Sub-second latency for complex 70B model responses, enabling a seamless interview flow.
 
-### B. Context Retrieval (RAG) Quality (**IMPROVED**)
+### B. "Expert Recognition" Logic (**NEW**)
+- **Fix:** Evaluator tuned to recognize "Technical Chaining" (holistic understanding) and specific tool configurations as high-quality signals.
+- **Impact:** Perfect and Strong candidates are now accurately identified and recommended for HIRE, while weak candidates are correctly filtered.
+
+### C. Context Retrieval (RAG) Quality (**IMPROVED**)
 - **Fix:** Search queries now incorporate the last AI question and previous turn to maintain technical context even with short candidate answers.
 - **Impact:** Significant reduction in "I don't know who you are" errors during conversation.
 

@@ -6,29 +6,73 @@ import os
 from qdrant_client import QdrantClient
 from qdrant_client.http import models
 from sentence_transformers import SentenceTransformer
-from llama_cpp import Llama
-from huggingface_hub import hf_hub_download
 import uuid
 from typing import List, Optional
 from fpdf import FPDF
 import json
 import re
+from groq import Groq
+from dotenv import load_dotenv
+
+load_dotenv()
 
 app = FastAPI(title="IntelliView AI Service")
+
+# LLM Configuration
+LLM_PROVIDER = os.getenv("LLM_PROVIDER", "groq").lower()
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 
 # Initialize models and client
 embed_model = SentenceTransformer('all-MiniLM-L6-v2')
 qdrant_host = os.getenv("QDRANT_HOST", "localhost")
 qdrant_client = QdrantClient(host=qdrant_host, port=6333)
 
-# Download and load LLM
-print("Loading LLM...")
-MODEL_PATH = hf_hub_download(
-    repo_id="TheBloke/Mistral-7B-Instruct-v0.2-GGUF",
-    filename="mistral-7b-instruct-v0.2.Q4_K_M.gguf"
-)
-llm = Llama(model_path=MODEL_PATH, n_ctx=4096, n_threads=4)
-print("LLM Loaded.")
+llm = None
+
+def get_llm():
+    global llm
+    if llm is not None:
+        return llm
+
+    if LLM_PROVIDER == "local":
+        from llama_cpp import Llama
+        from huggingface_hub import hf_hub_download
+        print("Loading Local LLM (Mistral)...")
+        MODEL_PATH = hf_hub_download(
+            repo_id="TheBloke/Mistral-7B-Instruct-v0.2-GGUF",
+            filename="mistral-7b-instruct-v0.2.Q4_K_M.gguf"
+        )
+        llm = Llama(model_path=MODEL_PATH, n_ctx=4096, n_threads=4)
+        print("Local LLM Loaded.")
+    else:
+        print("Using Groq API.")
+        if not GROQ_API_KEY:
+            print("WARNING: GROQ_API_KEY not set!")
+        llm = Groq(api_key=GROQ_API_KEY)
+    return llm
+
+def call_llm(prompt, max_tokens=500, stop=None):
+    client = get_llm()
+    if LLM_PROVIDER == "local":
+        output = client(prompt, max_tokens=max_tokens, stop=stop, echo=False)
+        return output["choices"][0]["text"].strip()
+    else:
+        try:
+            chat_completion = client.chat.completions.create(
+                messages=[
+                    {
+                        "role": "user",
+                        "content": prompt,
+                    }
+                ],
+                model="llama-3.3-70b-versatile",
+                max_tokens=max_tokens,
+                stop=stop,
+            )
+            return chat_completion.choices[0].message.content.strip()
+        except Exception as e:
+            print(f"DEBUG: Groq call failed: {e}")
+            return f"Error calling Groq: {str(e)}"
 
 COLLECTION_NAME = "cv_chunks"
 REPORTS_DIR = "/home/chems/.gemini/tmp/reports"
@@ -105,8 +149,7 @@ async def parse_cv(file: UploadFile = File(...)):
         
         # Generate CV Summary for persistent context
         summary_prompt = f"[INST] Summarize this CV in 3-4 bullet points focusing on technical stack and seniority. Limit to 100 words.\n\nCV TEXT:\n{text[:2000]} [/INST]"
-        summary_output = llm(summary_prompt, max_tokens=200, stop=["</s>"], echo=False)
-        cv_summary = summary_output["choices"][0]["text"].strip()
+        cv_summary = call_llm(summary_prompt, max_tokens=200, stop=["</s>"])
 
         return {
             "filename": file.filename,
@@ -142,8 +185,7 @@ History:
 {request.history[-2:]}
 Latest: {request.message}
 Query: [/INST]"""
-            expansion_output = llm(expansion_prompt, max_tokens=20, stop=["\n"], echo=False)
-            search_query = expansion_output["choices"][0]["text"].strip().strip('"')
+            search_query = call_llm(expansion_prompt, max_tokens=20, stop=["\n"]).strip().strip('"')
             print(f"DEBUG: Expanded Search Query: {search_query}", flush=True)
 
         query_vector = embed_model.encode(search_query).tolist()
@@ -165,15 +207,15 @@ Query: [/INST]"""
         
         # 3. System Prompt Construction
         cv_summary_text = f"\nCV SUMMARY (Holistic View):\n{request.cv_summary}" if request.cv_summary else ""
-        system_prompt = f"""You are a Senior Principal Engineer conducting a strict technical interview.
+        system_prompt = f"""You are a Senior Principal Engineer conducting a professional but rigorous technical interview.
 Current Phase: {phase}
 
 CORE RULES:
 1. LEAD THE INTERVIEW. Ask exactly ONE sharp, technical question per turn.
-2. PROBE DEEPER: If the candidate's answer is vague or short, do not move on. Ask "How" or "Why".
-3. NO FLUFF: Be extremely concise (max 2 sentences). No "Great", "Excellent", or "I see".
-4. REDIRECT: If the candidate is off-topic or asks you a question, firmly bring them back to your technical question.
-5. NEVER reveal you are an AI. Never include meta-commentary or notes.
+2. PROBE FOR DEPTH: If the candidate provides a good answer, ask a more advanced follow-up to find their limit. If vague, ask "How" or "Why".
+3. NO FLUFF: Be concise (max 3 sentences). Avoid generic praise like "Great" or "Excellent" unless they provide an exceptionally deep answer.
+4. REDIRECT: If the candidate is off-topic or evasive, firmly but professionally bring them back to the technical core.
+5. NEVER reveal you are an AI. Never include meta-commentary.
 {cv_summary_text}
 
 CV CONTEXT (Specific details for current turn):
@@ -197,8 +239,7 @@ CV CONTEXT (Specific details for current turn):
             full_prompt = f"[INST] {system_prompt} [/INST] {formatted_history} [INST] {request.message} [/INST]"
 
         print(f"DEBUG: Full Prompt Length: {len(full_prompt)}", flush=True)
-        output = llm(full_prompt, max_tokens=150, stop=["[INST]", "</s>", "Note:", "Interviewer:"], echo=False)
-        response_text = output["choices"][0]["text"].strip()
+        response_text = call_llm(full_prompt, max_tokens=150, stop=["[INST]", "</s>", "Note:", "Interviewer:"])
         
         # Final cleanup
         response_text = re.sub(r"\(?Note:.*", "", response_text, flags=re.IGNORECASE).strip()
@@ -218,35 +259,41 @@ async def generate_report(request: EvaluationRequest):
         transcript_text = "\n".join([f"{m['role'].upper()}: {m['content']}" for m in request.transcript])
         
         # 2. Ask LLM to evaluate with Chain-of-Thought (CoT)
-        eval_prompt = f"""[INST] You are an Elite Technical Bar-Raiser. Evaluate this technical interview transcript with extreme skepticism.
+        eval_prompt = f"""[INST] You are an Expert Technical Bar-Raiser. Evaluate this technical interview transcript to determine if the candidate meets the high standards for a Senior Engineer.
 
-**STRICT CRITICAL RULES:**
-1. ANALYZE FIRST: Before giving scores, write a short "Auditor Note" for each turn identifying if the candidate was vague, technically incorrect, or evasive.
-2. PENALIZE HEAVILY:
-   - Surface-level answers (buzzwords without "how/why") = Max 3/10.
-   - Repeating information or dodging questions = 0/10 for that section.
-   - Discrepancy between CV claims and interview performance = Flag as "High Risk".
-3. EVIDENCE REQUIRED: For every strength and weakness, you MUST include a direct quote from the candidate.
+**SCORING CRITERIA:**
+- PERFECT (9-10/10): Deep technical expertise, provides specific implementation details (tools, metrics, trade-offs), and handles advanced follow-ups with ease.
+- STRONG (7-8/10): Clear understanding of concepts, provides good examples, and is technically sound.
+- WEAK/VAGUE (3-6/10): Uses buzzwords but cannot explain "how" or "why". Dodges questions or provides surface-level answers.
+- NO SIGNAL (0-2/10): Off-topic, minimalist (one-word answers), or technically incorrect.
+
+**STRICT RULES:**
+1. ANALYZE FIRST: Write a short "Auditor Note" evaluating the technical depth.
+2. REWARD EXPERTISE: Candidates who mention specific tools (pg_stat_statements, asyncpg, Envoy, gRPC, Pydantic), specific configs (work_mem, pool_size), or specific metrics are EXPERTS. These are not "buzzwords" when used to explain a solution—they are evidence of mastery.
+3. BE FAIR TO DEPTH: If a candidate provides a highly technical answer, they should be scored 8-10. Even if they pivot slightly to provide broader context (Technical Chaining), this is a sign of SENIORITY and should be REWARDED, not penalized.
+4. HIRE RECOMMENDATION: 
+   - HIRE: Required for any candidate with Technical Score >= 7.
+   - NO HIRE: Reserved for Vague, Off-topic, or Minimalist candidates.
+5. FINAL RECOMMENDATION: Clear "HIRE" for Perfect/Strong; "NO HIRE" for others.
 
 TRANSCRIPT:
 {transcript_text}
 
 Output ONLY a valid JSON object in this format:
 {{
-    "auditor_notes": "Your internal critique of the candidate's honesty and depth...",
+    "auditor_notes": "Critique of depth, honesty, and technical accuracy...",
     "technical_score": int,
     "communication_score": int,
     "problem_solving_score": int,
     "experience_match_score": int,
-    "strengths": ["Strength description [Quote from transcript]"],
-    "weaknesses": ["Weakness description [Quote from transcript]"],
-    "proven_skills": ["Skill name - Evidence level (Low/Med/High)"],
-    "summary": "Realistic executive summary including hiring recommendation (Hire/No Hire)."
+    "strengths": ["Strength [Quote]"],
+    "weaknesses": ["Weakness [Quote]"],
+    "proven_skills": ["Skill - Evidence Level (Low/Med/High)"],
+    "summary": "Clear HIRE or NO HIRE recommendation with justification."
 }}
 [/INST]"""
 
-        output = llm(eval_prompt, max_tokens=2048, stop=["</s>"], echo=False)
-        eval_json_str = output["choices"][0]["text"].strip()
+        eval_json_str = call_llm(eval_prompt, max_tokens=2048, stop=["</s>"])
         print(f"DEBUG: Raw LLM Output: {eval_json_str}", flush=True)
         
         # Robust JSON extraction

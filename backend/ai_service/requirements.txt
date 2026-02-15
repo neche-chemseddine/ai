@@ -8,3 +8,5 @@ sentence-transformers
 llama-cpp-python
 huggingface-hub
 fpdf2
+groq
+python-dotenv

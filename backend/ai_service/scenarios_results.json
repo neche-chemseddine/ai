@@ -5,46 +5,49 @@
     "transcript": [
       {
         "role": "assistant",
-        "content": "John Doe, in your experience at CloudTech, how did optimizing PostgreSQL queries contribute to reducing latency by 40% in the migration to FastAPI microservices?"
+        "content": "Hello John, let's verify the technical details in your CV. Can you explain the specific optimizations you made to the PostgreSQL queries that reduced latency by 40% during the monolith migration at CloudTech?"
       },
       {
         "role": "user",
-        "content": "I used FastAPI for the microservices because of its asynchronous capabilities and automatic OpenAPI documentation. It significantly improved our development speed."
+        "content": "We used FastAPI because its type hinting with Pydantic reduced our runtime errors by 30%. I utilized dependency injection for database sessions, allowing us to swap the real PG session for a mock in our unit tests."
       },
       {
         "role": "assistant",
-        "content": "Thank you for sharing that. However, my question was about PostgreSQL optimization and its impact on latency reduction in the CloudTech project. Could you please provide an answer related to that specific topic? \n\nJohn Doe, in your experience at CloudTech, how did optimizing PostgreSQL queries contribute to reducing latency by 40% in the migration to FastAPI microservices?"
+        "content": "How did you leverage Pydantic's type hinting to achieve the 30% reduction in runtime errors, specifically in the context of database interactions with PostgreSQL?"
       },
       {
         "role": "user",
-        "content": "For PostgreSQL optimization, I analyzed slow queries using EXPLAIN ANALYZE and added missing indexes, especially on frequently joined columns like user_id and tenant_id."
+        "content": "I used EXPLAIN (ANALYZE, BUFFERS) to optimize the query. The bottleneck was a sequential scan on a 5M row table; adding a B-tree index on the 'email' and 'created_at' columns reduced execution time from 500ms to 12ms."
       },
       {
         "role": "assistant",
-        "content": "Thank you for providing that information. That's an effective technique for improving query performance. How did adding missing indexes on user_id and tenant_id columns specifically contribute to reducing latency by 40% in the PostgreSQL queries?"
+        "content": "Error calling Groq: Error code: 429 - {'error': {'message': 'Rate limit reached for model `llama-3.3-70b-versatile` in organization `org_01khgrg81sfmyawbj2qg1hs6h9` service tier `on_demand` on tokens per day (TPD): Limit 100000, Used 100000, Requested 523. Please try again in 7m31.872s. Need more tokens? Upgrade to Dev Tier today at https://console.groq.com/settings/billing', 'type': 'tokens', 'code': 'rate_limit_exceeded'}}"
       },
       {
         "role": "user",
-        "content": "I use Docker Multi-stage builds to keep image sizes small and Kubernetes for orchestration, specifically using Helm charts for deployment."
+        "content": "In Kubernetes, I configured Horizontal Pod Autoscalers (HPA) using custom metrics from Prometheus. I set the target CPU utilization to 70% and used PodDisruptionBudgets to ensure high availability during node upgrades."
       },
       {
         "role": "assistant",
-        "content": "John Doe, in the context of your experience at CloudTech, how did using Docker multi-stage builds and Helm charts for Kubernetes deployment contribute to the reduction of latency by 40% in the migration to FastAPI microservices? \n\nPlease note that my previous question was related to PostgreSQL optimization and the impact on latency reduction. I'm asking about the contribution of Docker multi-stage builds and Helm charts to the overall latency reduction in your CloudTech project. \n\nIf you have information about the specific improvements related to these technologies, I'd be"
+        "content": "Error calling Groq: Error code: 429 - {'error': {'message': 'Rate limit reached for model `llama-3.3-70b-versatile` in organization `org_01khgrg81sfmyawbj2qg1hs6h9` service tier `on_demand` on tokens per day (TPD): Limit 100000, Used 99999, Requested 712. Please try again in 10m14.304s. Need more tokens? Upgrade to Dev Tier today at https://console.groq.com/settings/billing', 'type': 'tokens', 'code': 'rate_limit_exceeded'}}"
       }
     ],
     "evaluation": {
-      "technical_score": 5,
-      "communication_score": 7,
-      "problem_solving_score": 4,
-      "experience_match_score": 6,
+      "technical_score": 1,
+      "communication_score": 1,
+      "problem_solving_score": 1,
+      "experience_match_score": 1,
+      "auditor_notes": "N/A",
+      "summary": "The evaluation failed due to insufficient data or LLM error.",
       "strengths": [
-        "Effectively used EXPLAIN ANALYZE for query optimization",
-        "Aware of Docker multi-stage builds and Kubernetes"
+        "N/A"
       ],
       "weaknesses": [
-        "Misunderstood the original question and provided unrelated answers multiple times"
+        "Analysis failed: Transcript likely too short or incoherent."
       ],
-      "summary": "John Doe demonstrated average technical skills and provided some relevant information about query optimization and use of modern technologies like FastAPI, Docker, and Kubernetes. However, he failed to connect these technologies to the specific latency reduction question and repeated unrelated answers twice, which negatively impacted the communication and problem-solving scores."
+      "proven_skills": [
+        "None detected"
+      ]
     }
   },
   {
@@ -53,7 +56,7 @@
     "transcript": [
       {
         "role": "assistant",
-        "content": "Greetings, John Doe. Could you please explain how you optimized PostgreSQL queries in your Senior Engineer role at CloudTech, resulting in a 40% reduction in latency?"
+        "content": "Error calling Groq: Error code: 429 - {'error': {'message': 'Rate limit reached for model `llama-3.3-70b-versatile` in organization `org_01khgrg81sfmyawbj2qg1hs6h9` service tier `on_demand` on tokens per day (TPD): Limit 100000, Used 99998, Requested 347. Please try again in 4m58.08s. Need more tokens? Upgrade to Dev Tier today at https://console.groq.com/settings/billing', 'type': 'tokens', 'code': 'rate_limit_exceeded'}}"
       },
       {
         "role": "user",
@@ -61,7 +64,7 @@
       },
       {
         "role": "assistant",
-        "content": "I'd appreciate it if you could clarify which specific techniques or optimization strategies were employed during the PostgreSQL query optimization process at CloudTech, resulting in the 40% reduction in latency. Thank you."
+        "content": "Error calling Groq: Error code: 429 - {'error': {'message': 'Rate limit reached for model `llama-3.3-70b-versatile` in organization `org_01khgrg81sfmyawbj2qg1hs6h9` service tier `on_demand` on tokens per day (TPD): Limit 100000, Used 99998, Requested 490. Please try again in 7m1.632s. Need more tokens? Upgrade to Dev Tier today at https://console.groq.com/settings/billing', 'type': 'tokens', 'code': 'rate_limit_exceeded'}}"
       },
       {
         "role": "user",
@@ -69,7 +72,7 @@
       },
       {
         "role": "assistant",
-        "content": "In that case, could you please describe the role you played in the migration of the legacy monolith to FastAPI microservices at CloudTech? What were your responsibilities and contributions during the project?"
+        "content": "Error calling Groq: Error code: 429 - {'error': {'message': 'Rate limit reached for model `llama-3.3-70b-versatile` in organization `org_01khgrg81sfmyawbj2qg1hs6h9` service tier `on_demand` on tokens per day (TPD): Limit 100000, Used 99996, Requested 651. Please try again in 9m19.008s. Need more tokens? Upgrade to Dev Tier today at https://console.groq.com/settings/billing', 'type': 'tokens', 'code': 'rate_limit_exceeded'}}"
       },
       {
         "role": "user",
@@ -77,20 +80,25 @@
       },
       {
         "role": "assistant",
-        "content": "Yes, Docker is a containerization technology, but could you please specify the exact tasks you performed using Docker and docker-compose during the migration of the legacy monolith to microservices at CloudTech? What configuration changes or optimizations were made to improve the overall system? \n\nAdditionally, how did these Docker-related tasks contribute to the 40% latency reduction in PostgreSQL queries?"
+        "content": "Error calling Groq: Error code: 429 - {'error': {'message': 'Rate limit reached for model `llama-3.3-70b-versatile` in organization `org_01khgrg81sfmyawbj2qg1hs6h9` service tier `on_demand` on tokens per day (TPD): Limit 100000, Used 99995, Requested 809. Please try again in 11m34.656s. Need more tokens? Upgrade to Dev Tier today at https://console.groq.com/settings/billing', 'type': 'tokens', 'code': 'rate_limit_exceeded'}}"
       }
     ],
     "evaluation": {
-      "technical_score": 0,
-      "communication_score": 5,
-      "problem_solving_score": 0,
-      "experience_match_score": 0,
-      "strengths": [],
-      "weaknesses": [
-        "Lack of specificity in answering technical questions",
-        "Lack of initiative in taking responsibility for optimizations"
+      "technical_score": 1,
+      "communication_score": 1,
+      "problem_solving_score": 1,
+      "experience_match_score": 1,
+      "auditor_notes": "N/A",
+      "summary": "The evaluation failed due to insufficient data or LLM error.",
+      "strengths": [
+        "N/A"
       ],
-      "summary": "The candidate was unable to provide specific details about their technical accomplishments, instead resorting to generic or vague statements. They also failed to demonstrate problem-solving skills by not offering any solutions or explanations for the latency reduction. Communication skills were average."
+      "weaknesses": [
+        "Analysis failed: Transcript likely too short or incoherent."
+      ],
+      "proven_skills": [
+        "None detected"
+      ]
     }
   },
   {
@@ -99,7 +107,7 @@
     "transcript": [
       {
         "role": "assistant",
-        "content": "Hello John, could you please explain how you optimized PostgreSQL queries in your previous role at CloudTech and what specific techniques you used to reduce latency by 40%?"
+        "content": "Error calling Groq: Error code: 429 - {'error': {'message': 'Rate limit reached for model `llama-3.3-70b-versatile` in organization `org_01khgrg81sfmyawbj2qg1hs6h9` service tier `on_demand` on tokens per day (TPD): Limit 100000, Used 99994, Requested 347. Please try again in 4m54.623999999s. Need more tokens? Upgrade to Dev Tier today at https://console.groq.com/settings/billing', 'type': 'tokens', 'code': 'rate_limit_exceeded'}}"
       },
       {
         "role": "user",
@@ -107,7 +115,7 @@
       },
       {
         "role": "assistant",
-        "content": "I'm an artificial intelligence and do not have the ability to eat or have personal preferences. Please focus on answering the question related to your professional experience. Could you explain how you optimized PostgreSQL queries at CloudTech?"
+        "content": "Error calling Groq: Error code: 429 - {'error': {'message': 'Rate limit reached for model `llama-3.3-70b-versatile` in organization `org_01khgrg81sfmyawbj2qg1hs6h9` service tier `on_demand` on tokens per day (TPD): Limit 100000, Used 99994, Requested 495. Please try again in 7m2.496s. Need more tokens? Upgrade to Dev Tier today at https://console.groq.com/settings/billing', 'type': 'tokens', 'code': 'rate_limit_exceeded'}}"
       },
       {
         "role": "user",
@@ -115,7 +123,7 @@
       },
       {
         "role": "assistant",
-        "content": "I'd be happy to learn about your optimization techniques for PostgreSQL queries at CloudTech. How did you specifically reduce latency by 40%? \n\nPlease answer the question related to your professional experience. We can discuss Italian cuisine another time."
+        "content": "Error calling Groq: Error code: 429 - {'error': {'message': 'Rate limit reached for model `llama-3.3-70b-versatile` in organization `org_01khgrg81sfmyawbj2qg1hs6h9` service tier `on_demand` on tokens per day (TPD): Limit 100000, Used 99992, Requested 660. Please try again in 9m23.328s. Need more tokens? Upgrade to Dev Tier today at https://console.groq.com/settings/billing', 'type': 'tokens', 'code': 'rate_limit_exceeded'}}"
       },
       {
         "role": "user",
@@ -123,19 +131,25 @@
       },
       {
         "role": "assistant",
-        "content": "While cooking and coding may involve problem-solving and attention to detail, they are distinct activities. I'd be happy to discuss your professional experience and how you optimized PostgreSQL queries at CloudTech. Please focus on providing technical details about your approach and the specific techniques used to reduce latency. \n\nLet's keep the conversation centered on your professional background."
+        "content": "Error calling Groq: Error code: 429 - {'error': {'message': 'Rate limit reached for model `llama-3.3-70b-versatile` in organization `org_01khgrg81sfmyawbj2qg1hs6h9` service tier `on_demand` on tokens per day (TPD): Limit 100000, Used 99991, Requested 825. Please try again in 11m45.024s. Need more tokens? Upgrade to Dev Tier today at https://console.groq.com/settings/billing', 'type': 'tokens', 'code': 'rate_limit_exceeded'}}"
       }
     ],
     "evaluation": {
-      "technical_score": 0,
-      "communication_score": 3,
-      "problem_solving_score": 0,
-      "experience_match_score": 0,
-      "strengths": [],
-      "weaknesses": [
-        "Lack of focus during the interview, repeatedly changing the topic to a non-related subject."
+      "technical_score": 1,
+      "communication_score": 1,
+      "problem_solving_score": 1,
+      "experience_match_score": 1,
+      "auditor_notes": "N/A",
+      "summary": "The evaluation failed due to insufficient data or LLM error.",
+      "strengths": [
+        "N/A"
       ],
-      "summary": "The candidate demonstrated a lack of ability to focus on the question asked and provided irrelevant responses, resulting in a low technical score, communication score, and problem-solving score. No experience-related strengths could be identified during the interview."
+      "weaknesses": [
+        "Analysis failed: Transcript likely too short or incoherent."
+      ],
+      "proven_skills": [
+        "None detected"
+      ]
     }
   },
   {
@@ -144,7 +158,7 @@
     "transcript": [
       {
         "role": "assistant",
-        "content": "Greetings, John Doe. Based on your CV, could you please explain how you optimized PostgreSQL queries in your last project at CloudTech and what specific techniques or tools were used to reduce latency by 40%?"
+        "content": "Error calling Groq: Error code: 429 - {'error': {'message': 'Rate limit reached for model `llama-3.3-70b-versatile` in organization `org_01khgrg81sfmyawbj2qg1hs6h9` service tier `on_demand` on tokens per day (TPD): Limit 100000, Used 99990, Requested 347. Please try again in 4m51.168s. Need more tokens? Upgrade to Dev Tier today at https://console.groq.com/settings/billing', 'type': 'tokens', 'code': 'rate_limit_exceeded'}}"
       },
       {
         "role": "user",
@@ -152,7 +166,7 @@
       },
       {
         "role": "assistant",
-        "content": "I apologize for the earlier response, John. Here's the question: Could you describe the methods and tools used to optimize PostgreSQL queries in your last project at CloudTech, leading to a 40% latency reduction?"
+        "content": "Error calling Groq: Error code: 429 - {'error': {'message': 'Rate limit reached for model `llama-3.3-70b-versatile` in organization `org_01khgrg81sfmyawbj2qg1hs6h9` service tier `on_demand` on tokens per day (TPD): Limit 100000, Used 99989, Requested 474. Please try again in 6m40.032s. Need more tokens? Upgrade to Dev Tier today at https://console.groq.com/settings/billing', 'type': 'tokens', 'code': 'rate_limit_exceeded'}}"
       },
       {
         "role": "user",
@@ -160,7 +174,7 @@
       },
       {
         "role": "assistant",
-        "content": "I'm sorry, John. Could you please explain the techniques and tools employed in optimizing PostgreSQL queries at CloudTech, achieving a 40% latency reduction?"
+        "content": "Error calling Groq: Error code: 429 - {'error': {'message': 'Rate limit reached for model `llama-3.3-70b-versatile` in organization `org_01khgrg81sfmyawbj2qg1hs6h9` service tier `on_demand` on tokens per day (TPD): Limit 100000, Used 99988, Requested 621. Please try again in 8m46.176s. Need more tokens? Upgrade to Dev Tier today at https://console.groq.com/settings/billing', 'type': 'tokens', 'code': 'rate_limit_exceeded'}}"
       },
       {
         "role": "user",
@@ -168,21 +182,76 @@
       },
       {
         "role": "assistant",
-        "content": "I'd appreciate it if you could discuss the optimization techniques and specific tools you utilized to optimize PostgreSQL queries at CloudTech, reducing latency by 40%."
+        "content": "Error calling Groq: Error code: 429 - {'error': {'message': 'Rate limit reached for model `llama-3.3-70b-versatile` in organization `org_01khgrg81sfmyawbj2qg1hs6h9` service tier `on_demand` on tokens per day (TPD): Limit 100000, Used 99987, Requested 767. Please try again in 10m51.456s. Need more tokens? Upgrade to Dev Tier today at https://console.groq.com/settings/billing', 'type': 'tokens', 'code': 'rate_limit_exceeded'}}"
       }
     ],
     "evaluation": {
-      "technical_score": 0,
-      "communication_score": 3,
-      "problem_solving_score": 0,
-      "experience_match_score": 5,
+      "technical_score": 1,
+      "communication_score": 1,
+      "problem_solving_score": 1,
+      "experience_match_score": 1,
+      "auditor_notes": "N/A",
+      "summary": "The evaluation failed due to insufficient data or LLM error.",
       "strengths": [
-        "CV was impressive"
+        "N/A"
       ],
       "weaknesses": [
-        "Unwillingness to clearly answer specific technical questions"
+        "Analysis failed: Transcript likely too short or incoherent."
       ],
-      "summary": "The candidate demonstrated poor communication skills and an unwillingness to answer technical questions directly, which raises concerns about their ability to explain complex concepts and effectively solve problems."
+      "proven_skills": [
+        "None detected"
+      ]
+    }
+  },
+  {
+    "scenario": "Perfect Candidate",
+    "candidate": "Sophia Architect",
+    "transcript": [
+      {
+        "role": "assistant",
+        "content": "Error calling Groq: Error code: 429 - {'error': {'message': 'Rate limit reached for model `llama-3.3-70b-versatile` in organization `org_01khgrg81sfmyawbj2qg1hs6h9` service tier `on_demand` on tokens per day (TPD): Limit 100000, Used 99985, Requested 347. Please try again in 4m46.848s. Need more tokens? Upgrade to Dev Tier today at https://console.groq.com/settings/billing', 'type': 'tokens', 'code': 'rate_limit_exceeded'}}"
+      },
+      {
+        "role": "user",
+        "content": "To achieve the 40% latency reduction, I first enabled pg_stat_statements to identify the top 5 most time-consuming queries. One major bottleneck was a nested loop join on the 'orders' and 'tenants' tables. I replaced it with a hash join by adjusting the work_mem and adding a composite index on (tenant_id, created_at DESC)."
+      },
+      {
+        "role": "assistant",
+        "content": "Error calling Groq: Error code: 429 - {'error': {'message': 'Rate limit reached for model `llama-3.3-70b-versatile` in organization `org_01khgrg81sfmyawbj2qg1hs6h9` service tier `on_demand` on tokens per day (TPD): Limit 100000, Used 99985, Requested 545. Please try again in 7m37.92s. Need more tokens? Upgrade to Dev Tier today at https://console.groq.com/settings/billing', 'type': 'tokens', 'code': 'rate_limit_exceeded'}}"
+      },
+      {
+        "role": "user",
+        "content": "In FastAPI, I implemented a custom middleware for dependency injection and used SQLAlchemy 2.0 with asyncpg for true non-blocking database I/O. For connection pooling, I tuned the QueuePool to a max_overflow of 20 and a pool_size of 10 to handle the spike in traffic during our peak hours without exhausting the PG max_connections."
+      },
+      {
+        "role": "assistant",
+        "content": "Error calling Groq: Error code: 429 - {'error': {'message': 'Rate limit reached for model `llama-3.3-70b-versatile` in organization `org_01khgrg81sfmyawbj2qg1hs6h9` service tier `on_demand` on tokens per day (TPD): Limit 100000, Used 99984, Requested 760. Please try again in 10m42.816s. Need more tokens? Upgrade to Dev Tier today at https://console.groq.com/settings/billing', 'type': 'tokens', 'code': 'rate_limit_exceeded'}}"
+      },
+      {
+        "role": "user",
+        "content": "For the microservices communication, I avoided synchronous REST calls where possible and used a sidecar pattern with Envoy for service discovery. We used gRPC for internal high-throughput communication between the order service and the inventory service to reduce serialization overhead compared to JSON."
+      },
+      {
+        "role": "assistant",
+        "content": "Error calling Groq: Error code: 429 - {'error': {'message': 'Rate limit reached for model `llama-3.3-70b-versatile` in organization `org_01khgrg81sfmyawbj2qg1hs6h9` service tier `on_demand` on tokens per day (TPD): Limit 100000, Used 99983, Requested 956. Please try again in 13m31.296s. Need more tokens? Upgrade to Dev Tier today at https://console.groq.com/settings/billing', 'type': 'tokens', 'code': 'rate_limit_exceeded'}}"
+      }
+    ],
+    "evaluation": {
+      "technical_score": 1,
+      "communication_score": 1,
+      "problem_solving_score": 1,
+      "experience_match_score": 1,
+      "auditor_notes": "N/A",
+      "summary": "The evaluation failed due to insufficient data or LLM error.",
+      "strengths": [
+        "N/A"
+      ],
+      "weaknesses": [
+        "Analysis failed: Transcript likely too short or incoherent."
+      ],
+      "proven_skills": [
+        "None detected"
+      ]
     }
   }
 ]
