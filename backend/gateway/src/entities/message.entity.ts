@@ -1,4 +1,4 @@
-import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, CreateDateColumn } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, CreateDateColumn, JoinColumn } from 'typeorm';
 import { Interview } from './interview.entity';
 
 @Entity('messages')
@@ -7,6 +7,7 @@ export class Message {
   id: number;
 
   @ManyToOne(() => Interview, (interview) => interview.messages)
+  @JoinColumn({ name: 'interview_id' })
   interview: Interview;
 
   @Column()

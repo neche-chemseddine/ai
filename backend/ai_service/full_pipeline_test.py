@@ -63,12 +63,48 @@ def run_full_test():
         print(f"AI: {ai_msg}")
         transcript.append({"role": "assistant", "content": ai_msg})
 
-    # 4. Generate Report
-    print("\n[Step 4] Generating Evaluation Report...")
+    # 4. Test Quiz Evaluation
+    print("\n[Step 4] Testing Quiz Evaluation...")
+    quiz_data = [
+        {"question": "What is Python's GIL?", "correct_answer": 0},
+        {"question": "How does useMemo work in React?", "correct_answer": 1}
+    ]
+    candidate_answers = {"0": 0, "1": 2} # One correct, one wrong
+    
+    response = client.post("/v1/quiz/evaluate", json={
+        "quiz_data": quiz_data,
+        "candidate_answers": candidate_answers
+    })
+    if response.status_code == 200:
+        print(f"Quiz Score: {response.json()['score']}/10")
+        print(f"Critique: {response.json()['critique']}")
+    else:
+        print(f"Quiz evaluation failed: {response.text}")
+
+    # 5. Test Coding Evaluation
+    print("\n[Step 5] Testing Coding Evaluation...")
+    response = client.post("/v1/coding/evaluate", json={
+        "problem_statement": "Implement a thread-safe rate limiter.",
+        "solution": "import threading\nclass RateLimiter:\n    def __init__(self):\n        self.lock = threading.Lock()\n    def check(self):\n        with self.lock: return True",
+        "test_results": {"status": "success"}
+    })
+    if response.status_code == 200:
+        eval_data = response.json()
+        print(f"Coding Score: {eval_data['score']}/10")
+        print(f"Complexity: {eval_data['complexity']}")
+        print(f"Critique: {eval_data['critique']}")
+    else:
+        print(f"Coding evaluation failed: {response.text}")
+
+    # 6. Generate Final Integrated Report
+    print("\n[Step 6] Generating Final Integrated Evaluation Report...")
     response = client.post("/v1/report/generate", json={
         "candidate_name": "Test Candidate",
         "cv_session_id": cv_session_id,
-        "transcript": transcript
+        "transcript": transcript,
+        "quiz_results": {"score": 5.0, "critique": "Average knowledge"},
+        "coding_solution": "class RateLimiter: ...",
+        "coding_results": {"score": 8, "complexity": "O(1)"}
     })
     
     if response.status_code == 200:

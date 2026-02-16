@@ -1,36 +1,23 @@
-# Functional Specification: IntelliView AI (Gamified Edition)
+# Functional Specification: IntelliView AI (Serious Technical Assessment)
 
-## 1. User Roles & Permissions
-*   **Admin:** Manage tenants, system-wide LLM configurations, and billing.
-*   **Recruiter:** Upload CVs, generate assessment links, and review multi-stage reports.
-*   **Candidate:** Complete the multi-stage assessment (Quiz -> Code -> Chat).
+## 1. Vision & Tone
+IntelliView AI is designed as a **professional bar-raiser system**. It departs from generic "friendly" AI to provide a rigorous, objective, and deeply technical evaluation. The tone is serious, professional, and uncompromising on technical standards.
 
-## 2. Core Features: The "Coding Game" Assessment
+## 2. Core Features: The Multi-Stage Gauntlet
 
-The interview process is transitioned from a simple chat into a structured, three-stage technical gauntlet.
+The interview process is a 3-stage gauntlet, each independently evaluated to provide a 360-degree technical signal.
 
-### 2.1. Stage 1: Knowledge Sprint (Dynamic MCQ)
-*   **Description:** A timed series of multiple-choice questions tailored to the candidate's CV.
-*   **Mechanics:** 
-    *   AI analyzes CV and generates 5-10 technical questions.
-    *   Questions cover Frameworks, Languages, and Best Practices.
-*   **Acceptance Criteria:** Questions must be relevant to the candidate's seniority level.
+### 2.1. Stage 1: Knowledge Sprint (Deep MCQ)
+*   **Description:** A high-pressure, technical MCQ stage focusing on language internals and architecture.
+*   **Evaluation:** Immediate scoring and AI-generated critique of the candidate's theoretical foundation.
 
-### 2.2. Stage 2: Coding Challenge (Live IDE)
-*   **Description:** A hands-on programming task within a browser-based IDE.
-*   **Mechanics:**
-    *   Candidate is presented with a problem statement and a starting code template.
-    *   Real-time syntax highlighting and auto-completion.
-    *   "Run Tests" button to check logic against hidden/visible test cases.
-*   **Acceptance Criteria:** Code must be persisted in real-time. Results of test cases must be recorded for AI review in Stage 3.
+### 2.2. Stage 2: Coding Arena (Hands-on Challenge)
+*   **Description:** A complex programming task requiring idiomatic code and algorithmic efficiency.
+*   **Evaluation:** Automated code review focusing on complexity (Big O), edge cases, and code quality.
 
-### 2.3. Stage 3: The Boss Level (AI Probing & Theory)
-*   **Description:** A chat-based "defense" of the code written in Stage 2.
-*   **Mechanics:**
-    *   AI reads the candidate's code and test results.
-    *   **Phase 1 (Code Defense):** AI asks about specific implementation choices (e.g., "Why did you use a recursion here?").
-    *   **Phase 2 (Theory Deep-Dive):** AI pivots to advanced architectural or theoretical concepts based on the task.
-*   **Acceptance Criteria:** AI must reference specific line numbers or logic from the Stage 2 code.
+### 2.3. Stage 3: The Boss Level (Code Defense)
+*   **Description:** A deep-dive discussion where the AI probes the candidate's implementation choices and theoretical depth.
+*   **Evaluation:** Final comprehensive report synthesizing signals from all three stages.
 
 ### 2.4. Integrated Evaluation & Review
 *   **Description:** A comprehensive web-based review page and consolidated PDF report.

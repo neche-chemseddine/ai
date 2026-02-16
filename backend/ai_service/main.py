@@ -95,6 +95,15 @@ class ChallengeRequest(BaseModel):
     cv_summary: str
     language: Optional[str] = "python"
 
+class QuizEvaluationRequest(BaseModel):
+    quiz_data: List[dict]
+    candidate_answers: dict
+
+class CodingEvaluationRequest(BaseModel):
+    problem_statement: str
+    solution: str
+    test_results: Optional[dict] = None
+
 class EvaluationRequest(BaseModel):
     candidate_name: str
     transcript: List[dict]
@@ -130,22 +139,26 @@ async def health_check():
 @app.post("/v1/quiz/generate")
 async def generate_quiz(request: QuizRequest):
     try:
-        prompt = f"""[INST] You are an expert technical interviewer. Based on the following CV summary, generate {request.num_questions} multiple-choice questions (MCQs).
-Questions should cover the technologies, frameworks, and languages mentioned.
-Each question must have exactly 4 options and one correct answer.
-Seniority level should match the candidate.
+        prompt = f"""[INST] You are an Expert Principal Engineer conducting a high-stakes technical assessment. Generate {request.num_questions} deeply technical multiple-choice questions (MCQs).
+Target Tech Stack: {request.cv_summary}
 
-CV SUMMARY:
-{request.cv_summary}
+RULES:
+1. FOCUS ON DEPTH: Do not ask surface-level "What is..." questions. Focus on:
+   - Language Internals (e.g., Python's GIL, Memory Management, Async loop internals).
+   - Architectural Trade-offs (e.g., CAP Theorem, Distributed Consistency).
+   - Performance & Optimization (e.g., Time complexity of specific library operations, Database indexing internals).
+2. SERIOUS TONE: The questions must be challenging enough that only a Senior+ Engineer would answer all correctly.
+3. 4 OPTIONS: Provide exactly 4 options. Options must be plausible (no obvious "wrong" answers).
+4. SENIORITY MATCH: Ensure the complexity aligns with a "Bar-Raiser" standard.
 
-Output ONLY a valid JSON array of objects with this format:
+Output ONLY a valid JSON array:
 [
   {{
     "id": 1,
-    "question": "Question text...",
-    "options": ["A", "B", "C", "D"],
-    "correct_answer": 0,
-    "explanation": "Why this is correct..."
+    "question": "Deep technical question...",
+    "options": ["Plausible Opt A", "Plausible Opt B", "Plausible Opt C", "Plausible Opt D"],
+    "correct_answer": index_int,
+    "explanation": "Detailed technical explanation of why the answer is correct and why others are subtlely wrong."
   }}
 ]
 [/INST]"""
@@ -204,6 +217,81 @@ Output ONLY a valid JSON object with this format:
             
     except Exception as e:
         print(f"Error generating challenge: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/v1/quiz/evaluate")
+async def evaluate_quiz(request: QuizEvaluationRequest):
+    try:
+        correct_count = 0
+        total = len(request.quiz_data)
+        breakdown = []
+        
+        for i, q in enumerate(request.quiz_data):
+            candidate_ans = request.candidate_answers.get(str(i))
+            is_correct = candidate_ans == q['correct_answer']
+            if is_correct:
+                correct_count += 1
+            breakdown.append({
+                "question": q['question'],
+                "is_correct": is_correct,
+                "candidate_answer": candidate_ans,
+                "correct_answer": q['correct_answer']
+            })
+            
+        score = (correct_count / total) * 10
+        
+        prompt = f"""[INST] Analyze this candidate's quiz performance for a Senior role.
+Score: {score}/10 ({correct_count}/{total} correct).
+Breakdown: {json.dumps(breakdown)}
+
+Provide a concise (2 sentence) professional critique of their theoretical knowledge base. 
+Be direct and serious. [/INST]"""
+        
+        critique = call_llm(prompt, max_tokens=100)
+        
+        return {
+            "score": score,
+            "correct_count": correct_count,
+            "total": total,
+            "critique": critique
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/v1/coding/evaluate")
+async def evaluate_coding(request: CodingEvaluationRequest):
+    try:
+        prompt = f"""[INST] You are a Senior Principal Engineer performing a code review. 
+Problem: {request.problem_statement}
+Candidate Solution:
+{request.solution}
+
+Analyze for:
+1. Time/Space Complexity.
+2. Idiomatic usage & Code Quality.
+3. Edge case handling.
+
+Output ONLY a JSON object:
+{{
+  "score": int (1-10),
+  "complexity": "e.g. O(N log N)",
+  "critique": "Serious, direct technical feedback...",
+  "missing_elements": ["List of missed edge cases or optimizations"]
+}}
+[/INST]"""
+        
+        eval_json_str = call_llm(prompt, max_tokens=1000)
+        start_idx = eval_json_str.find('{')
+        end_idx = eval_json_str.rfind('}')
+        if start_idx != -1:
+            json_str = eval_json_str[start_idx:end_idx+1]
+            json_str = "".join(ch for ch in json_str if ch.isprintable() or ch in "\n\r\t")
+            evaluation = json.loads(json_str, strict=False)
+            return evaluation
+        else:
+            raise ValueError("Evaluation failed")
+            
+    except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/v1/cv/parse")
@@ -380,9 +468,6 @@ TRANSCRIPT:
    - HIRE: Required for any candidate with Technical Score >= 7.
    - NO HIRE: Reserved for Vague, Off-topic, or Minimalist candidates.
 5. FINAL RECOMMENDATION: Clear "HIRE" for Perfect/Strong; "NO HIRE" for others.
-
-TRANSCRIPT:
-{transcript_text}
 
 Output ONLY a valid JSON object in this format:
 {{

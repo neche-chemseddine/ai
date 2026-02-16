@@ -81,7 +81,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         const aiText = response.data.response;
         
         const aiMsg = this.messageRepository.create({
-          interview,
+          interview: { id: data.interviewId },
           role: 'assistant',
           content: aiText,
         });
@@ -105,38 +105,53 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @MessageBody() data: { interviewId: string; text: string },
     @ConnectedSocket() client: Socket,
   ) {
+    console.log(`[ChatGateway] Received candidate_message for interview ${data.interviewId}`);
     const interview = await this.interviewRepository.findOne({ 
       where: { id: data.interviewId },
       relations: ['messages'] 
     });
     
     if (!interview || interview.status === 'completed') {
-      console.error(`Interview not found or already completed: ${data.interviewId}`);
+      console.error(`[ChatGateway] Interview not found or already completed: ${data.interviewId}`);
       return;
     }
 
     // 1. Save candidate message to DB
-    const userMsg = this.messageRepository.create({
-      interview,
-      role: 'user',
-      content: data.text,
-    });
-    await this.messageRepository.save(userMsg);
+    try {
+      const userMsg = this.messageRepository.create({
+        interview: { id: data.interviewId },
+        role: 'user',
+        content: data.text,
+      });
+      const saved = await this.messageRepository.save(userMsg);
+      console.log(`[ChatGateway] Candidate message saved with ID: ${saved.id}`);
+    } catch (err) {
+      console.error(`[ChatGateway] Failed to save candidate message: ${err.message}`);
+    }
     
-    // Increment question count
-    interview.question_count += 1;
-    await this.interviewRepository.save(interview);
+    // Increment question count and reload interview with full message history
+    await this.interviewRepository.update(data.interviewId, { 
+      question_count: interview.question_count + 1 
+    });
+
+    const updatedInterview = await this.interviewRepository.findOne({
+      where: { id: data.interviewId },
+      relations: ['messages'],
+      order: { messages: { id: 'ASC' } }
+    });
+
+    if (!updatedInterview) return;
 
     // 2. Emit typing indicator
     client.emit('interviewer_typing', { typing: true });
 
     // 3. Call AI Service for real generation
     const aiServiceUrl = this.configService.get<string>('AI_SERVICE_URL', 'http://localhost:8001');
-    const cv_session_id = (interview.rubric as any)?.cv_session_id;
+    const cv_session_id = (updatedInterview.rubric as any)?.cv_session_id;
 
     try {
       // If we reached the limit, we tell the AI to conclude
-      const isLastQuestion = interview.question_count >= this.MAX_QUESTIONS;
+      const isLastQuestion = updatedInterview.question_count >= this.MAX_QUESTIONS;
       
       const response = await firstValueFrom(
         this.httpService.post(`${aiServiceUrl}/v1/chat/generate`, {
@@ -144,14 +159,14 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
           message: isLastQuestion 
             ? `${data.text} (Note: This is the last response. Conclude the interview and say goodbye.)` 
             : data.text,
-          history: interview.messages.map(m => ({ role: m.role, content: m.content }))
+          history: updatedInterview.messages.map(m => ({ role: m.role, content: m.content }))
         })
       );
 
       const aiText = response.data.response;
       
       const aiMsg = this.messageRepository.create({
-        interview,
+        interview: { id: data.interviewId },
         role: 'assistant',
         content: aiText,
       });

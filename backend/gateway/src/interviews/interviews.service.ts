@@ -89,7 +89,9 @@ export class InterviewsService {
       where: { 
         access_token: token,
         expires_at: MoreThan(new Date())
-      }
+      },
+      relations: ['messages'],
+      order: { messages: { id: 'ASC' } }
     });
 
     if (!interview) {
@@ -162,8 +164,28 @@ export class InterviewsService {
 
   async submitQuiz(token: string, results: any) {
     const interview = await this.getInterviewByToken(token);
-    interview.quiz_results = { ...interview.quiz_results, attempts: results };
-    return this.interviewRepository.save(interview);
+    
+    // Call AI Service to evaluate the quiz
+    const aiServiceUrl = this.configService.get<string>('AI_SERVICE_URL', 'http://localhost:8001');
+    try {
+      const response = await firstValueFrom(
+        this.httpService.post(`${aiServiceUrl}/v1/quiz/evaluate`, {
+          quiz_data: interview.quiz_results.quiz,
+          candidate_answers: results
+        })
+      );
+      
+      interview.quiz_results = { 
+        ...interview.quiz_results, 
+        attempts: results,
+        evaluation: response.data 
+      };
+      return this.interviewRepository.save(interview);
+    } catch (error) {
+      console.error('Error in submitQuiz evaluation:', error.message);
+      interview.quiz_results = { ...interview.quiz_results, attempts: results };
+      return this.interviewRepository.save(interview);
+    }
   }
 
   async getOrCreateCoding(token: string) {
@@ -195,15 +217,38 @@ export class InterviewsService {
 
   async submitCoding(token: string, solution: string, results: any) {
     const interview = await this.getInterviewByToken(token);
-    interview.coding_solution = solution;
-    interview.coding_results = { ...interview.coding_results, execution_results: results };
-    return this.interviewRepository.save(interview);
+    
+    // Call AI Service to evaluate the code
+    const aiServiceUrl = this.configService.get<string>('AI_SERVICE_URL', 'http://localhost:8001');
+    try {
+      const response = await firstValueFrom(
+        this.httpService.post(`${aiServiceUrl}/v1/coding/evaluate`, {
+          problem_statement: interview.coding_results.challenge.problem_statement,
+          solution: solution,
+          test_results: results
+        })
+      );
+      
+      interview.coding_solution = solution;
+      interview.coding_results = { 
+        ...interview.coding_results, 
+        execution_results: results,
+        evaluation: response.data
+      };
+      return this.interviewRepository.save(interview);
+    } catch (error) {
+      console.error('Error in submitCoding evaluation:', error.message);
+      interview.coding_solution = solution;
+      interview.coding_results = { ...interview.coding_results, execution_results: results };
+      return this.interviewRepository.save(interview);
+    }
   }
 
   async evaluateInterview(interviewId: string, tenantId: string) {
     const interview = await this.interviewRepository.findOne({
       where: { id: interviewId, tenant_id: tenantId },
-      relations: ['messages']
+      relations: ['messages'],
+      order: { messages: { created_at: 'ASC' } }
     });
 
     if (!interview) {

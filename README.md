@@ -63,9 +63,11 @@ npm run dev
 - [x] **High-Speed Inference**: Migration to **Groq (Llama 3.3 70B)** for near-instant responses.
 - [x] **Phase-Aware Orchestration**: Structured progression (Verification -> Breadth -> Depth -> Scenario).
 - [x] **Intelligent Context**: LLM-based RAG query expansion and holistic CV summary injection.
-- [x] **Expert Recognition Logic**: Evaluator tuned to reward specific technical patterns (asyncpg, gRPC, etc.).
-- [x] **Brutal Evaluator persona**: Skeptical, bar-raising analysis using Chain-of-Thought (CoT).
-- [x] **Evidence-Based Scoring**: Mandatory transcript quotes for all strengths and weaknesses.
-- [x] **Proven Skills Mapping**: Explicit detection of technical skills with evidence-based seniority levels.
-- [ ] Load Testing (Target: 100 concurrent sessions)
-- [ ] Public Beta Release
+- [x] **Brutal Evaluator persona**: Skeptical, bar-raiser analysis using Chain-of-Thought (CoT).
+
+### Phase 4: Gamified Experience - "Coding Game" Style (Complete)
+- [x] **Technical Quiz Sprint**: Deep-dive technical MCQs focusing on language internals and architecture.
+- [x] **Coding Arena**: Integrated browser-based IDE for hands-on technical challenges.
+- [x] **Multi-Step Evaluation**: Independent scoring and technical critiques for Quiz, Code, and Chat stages.
+- [x] **AI Code Defense**: Chat stage specifically tuned to probe implementation choices and Big-O complexity.
+- [x] **Full E2E Automation**: `make test-e2e` for automated verification of the entire assessment pipeline.
