@@ -3,6 +3,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import Dashboard from './pages/Dashboard';
 import Login from './pages/Login';
 import CandidateInterview from './pages/CandidateInterview';
+import InterviewReview from './pages/InterviewReview';
 import { authService } from './services/auth.service';
 import { ThemeProvider } from './components/theme-provider';
 import { Toaster } from './components/ui/sonner';
@@ -28,6 +29,14 @@ function App() {
             element={
               <ProtectedRoute>
                 <Dashboard />
+              </ProtectedRoute>
+            } 
+          />
+          <Route 
+            path="/review/:id" 
+            element={
+              <ProtectedRoute>
+                <InterviewReview />
               </ProtectedRoute>
             } 
           />

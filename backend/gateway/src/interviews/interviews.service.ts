@@ -44,7 +44,8 @@ export class InterviewsService {
         status: 'pending',
         rubric: { 
           chunks: response.data.chunk_count,
-          cv_session_id: response.data.cv_session_id 
+          cv_session_id: response.data.cv_session_id,
+          cv_summary: response.data.cv_summary
         },
       });
       const savedInterview = await this.interviewRepository.save(interview);
@@ -109,6 +110,96 @@ export class InterviewsService {
     });
   }
 
+  async findOne(id: string, tenantId: string) {
+    const interview = await this.interviewRepository.findOne({
+      where: { id, tenant_id: tenantId },
+      relations: ['messages'],
+      order: { messages: { created_at: 'ASC' } }
+    });
+
+    if (!interview) {
+      throw new NotFoundException('Interview not found');
+    }
+
+    return interview;
+  }
+
+  async updateStage(token: string, stage: string) {
+    const interview = await this.getInterviewByToken(token);
+    interview.current_stage = stage;
+    if (stage === 'quiz' || stage === 'coding' || stage === 'chat') {
+      interview.status = 'active';
+    }
+    return this.interviewRepository.save(interview);
+  }
+
+  async getOrCreateQuiz(token: string) {
+    const interview = await this.getInterviewByToken(token);
+    if (interview.quiz_results?.quiz) {
+      return interview.quiz_results.quiz;
+    }
+
+    const aiServiceUrl = this.configService.get<string>('AI_SERVICE_URL', 'http://localhost:8001');
+    const cv_summary = (interview.rubric as any)?.cv_summary || "Senior Software Engineer";
+    
+    try {
+      const response = await firstValueFrom(
+        this.httpService.post(`${aiServiceUrl}/v1/quiz/generate`, {
+          cv_session_id: interview.rubric?.cv_session_id,
+          cv_summary: cv_summary,
+          num_questions: 5
+        })
+      );
+
+      interview.quiz_results = { ...interview.quiz_results, quiz: response.data.quiz };
+      await this.interviewRepository.save(interview);
+      return response.data.quiz;
+    } catch (error) {
+      console.error('Error in getOrCreateQuiz:', error.message);
+      throw new InternalServerErrorException('Failed to generate quiz');
+    }
+  }
+
+  async submitQuiz(token: string, results: any) {
+    const interview = await this.getInterviewByToken(token);
+    interview.quiz_results = { ...interview.quiz_results, attempts: results };
+    return this.interviewRepository.save(interview);
+  }
+
+  async getOrCreateCoding(token: string) {
+    const interview = await this.getInterviewByToken(token);
+    if (interview.coding_results?.challenge) {
+      return interview.coding_results.challenge;
+    }
+
+    const aiServiceUrl = this.configService.get<string>('AI_SERVICE_URL', 'http://localhost:8001');
+    const cv_summary = (interview.rubric as any)?.cv_summary || "Senior Software Engineer";
+
+    try {
+      const response = await firstValueFrom(
+        this.httpService.post(`${aiServiceUrl}/v1/coding/generate`, {
+          cv_session_id: interview.rubric?.cv_session_id,
+          cv_summary: cv_summary,
+          language: 'python'
+        })
+      );
+
+      interview.coding_results = { ...interview.coding_results, challenge: response.data };
+      await this.interviewRepository.save(interview);
+      return response.data;
+    } catch (error) {
+      console.error('Error in getOrCreateCoding:', error.message);
+      throw new InternalServerErrorException('Failed to generate coding challenge');
+    }
+  }
+
+  async submitCoding(token: string, solution: string, results: any) {
+    const interview = await this.getInterviewByToken(token);
+    interview.coding_solution = solution;
+    interview.coding_results = { ...interview.coding_results, execution_results: results };
+    return this.interviewRepository.save(interview);
+  }
+
   async evaluateInterview(interviewId: string, tenantId: string) {
     const interview = await this.interviewRepository.findOne({
       where: { id: interviewId, tenant_id: tenantId },
@@ -126,7 +217,10 @@ export class InterviewsService {
         this.httpService.post(`${aiServiceUrl}/v1/report/generate`, {
           candidate_name: interview.candidate_name,
           transcript: interview.messages.map(m => ({ role: m.role, content: m.content })),
-          cv_session_id: interview.rubric?.cv_session_id
+          cv_session_id: interview.rubric?.cv_session_id,
+          quiz_results: interview.quiz_results,
+          coding_solution: interview.coding_solution,
+          coding_results: interview.coding_results
         })
       );
 

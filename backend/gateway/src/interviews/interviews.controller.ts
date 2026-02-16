@@ -39,6 +39,12 @@ export class InterviewsController {
   }
 
   @UseGuards(JwtAuthGuard)
+  @Get(':id')
+  async findOne(@Param('id') id: string, @Request() req) {
+    return this.interviewsService.findOne(id, req.user.tenant_id);
+  }
+
+  @UseGuards(JwtAuthGuard)
   @Post(':id/invite')
   async generateInvite(@Param('id') id: string, @Request() req) {
     return this.interviewsService.generateInvite(id, req.user.tenant_id);
@@ -53,6 +59,31 @@ export class InterviewsController {
   @Get('session/:token')
   async getSession(@Param('token') token: string) {
     return this.interviewsService.getInterviewByToken(token);
+  }
+
+  @Post('session/:token/stage')
+  async updateStage(@Param('token') token: string, @Body('stage') stage: string) {
+    return this.interviewsService.updateStage(token, stage);
+  }
+
+  @Get('session/:token/quiz')
+  async getQuiz(@Param('token') token: string) {
+    return this.interviewsService.getOrCreateQuiz(token);
+  }
+
+  @Post('session/:token/quiz/submit')
+  async submitQuiz(@Param('token') token: string, @Body('results') results: any) {
+    return this.interviewsService.submitQuiz(token, results);
+  }
+
+  @Get('session/:token/coding')
+  async getCoding(@Param('token') token: string) {
+    return this.interviewsService.getOrCreateCoding(token);
+  }
+
+  @Post('session/:token/coding/submit')
+  async submitCoding(@Param('token') token: string, @Body('solution') solution: string, @Body('results') results: any) {
+    return this.interviewsService.submitCoding(token, solution, results);
   }
 
   @Get('reports/:filename')

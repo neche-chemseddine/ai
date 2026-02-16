@@ -85,10 +85,23 @@ class ChatRequest(BaseModel):
     history: List[dict] = []
     is_init: bool = False
 
+class QuizRequest(BaseModel):
+    cv_session_id: str
+    cv_summary: str
+    num_questions: int = 5
+
+class ChallengeRequest(BaseModel):
+    cv_session_id: str
+    cv_summary: str
+    language: Optional[str] = "python"
+
 class EvaluationRequest(BaseModel):
     candidate_name: str
     transcript: List[dict]
     cv_session_id: str
+    quiz_results: Optional[dict] = None
+    coding_solution: Optional[str] = None
+    coding_results: Optional[dict] = None
 
 # Ensure collection exists
 try:
@@ -113,6 +126,85 @@ class ReportPDF(FPDF):
 @app.get("/health")
 async def health_check():
     return {"status": "healthy"}
+
+@app.post("/v1/quiz/generate")
+async def generate_quiz(request: QuizRequest):
+    try:
+        prompt = f"""[INST] You are an expert technical interviewer. Based on the following CV summary, generate {request.num_questions} multiple-choice questions (MCQs).
+Questions should cover the technologies, frameworks, and languages mentioned.
+Each question must have exactly 4 options and one correct answer.
+Seniority level should match the candidate.
+
+CV SUMMARY:
+{request.cv_summary}
+
+Output ONLY a valid JSON array of objects with this format:
+[
+  {{
+    "id": 1,
+    "question": "Question text...",
+    "options": ["A", "B", "C", "D"],
+    "correct_answer": 0,
+    "explanation": "Why this is correct..."
+  }}
+]
+[/INST]"""
+        
+        quiz_json_str = call_llm(prompt, max_tokens=2048, stop=["</s>"])
+        
+        # Robust JSON extraction
+        start_idx = quiz_json_str.find('[')
+        end_idx = quiz_json_str.rfind(']')
+        if start_idx != -1:
+            json_str = quiz_json_str[start_idx:end_idx+1]
+            json_str = "".join(ch for ch in json_str if ch.isprintable() or ch in "\n\r\t")
+            quiz = json.loads(json_str, strict=False)
+            return {"quiz": quiz}
+        else:
+            raise ValueError("Could not find [ in LLM output")
+            
+    except Exception as e:
+        print(f"Error generating quiz: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/v1/coding/generate")
+async def generate_challenge(request: ChallengeRequest):
+    try:
+        prompt = f"""[INST] Generate a coding challenge for a candidate with the following CV summary.
+Language: {request.language}
+The challenge should be of appropriate difficulty for their seniority.
+
+CV SUMMARY:
+{request.cv_summary}
+
+Output ONLY a valid JSON object with this format:
+{{
+  "title": "Challenge Title",
+  "problem_statement": "Markdown description of the problem...",
+  "template": "Initial code for the candidate...",
+  "expected_output_type": "string/int/list",
+  "test_cases": [
+    {{"input": "args", "output": "expected result"}}
+  ]
+}}
+[/INST]"""
+        
+        challenge_json_str = call_llm(prompt, max_tokens=2048, stop=["</s>"])
+        
+        start_idx = challenge_json_str.find('{')
+        end_idx = challenge_json_str.rfind('}')
+        if start_idx != -1:
+            json_str = challenge_json_str[start_idx:end_idx+1]
+            # Remove non-printable control characters except newline and tab
+            json_str = "".join(ch for ch in json_str if ch.isprintable() or ch in "\n\r\t")
+            challenge = json.loads(json_str, strict=False)
+            return challenge
+        else:
+            raise ValueError("Could not find { in LLM output")
+            
+    except Exception as e:
+        print(f"Error generating challenge: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/v1/cv/parse")
 async def parse_cv(file: UploadFile = File(...)):
@@ -258,8 +350,21 @@ async def generate_report(request: EvaluationRequest):
         # 1. Prepare Transcript for LLM
         transcript_text = "\n".join([f"{m['role'].upper()}: {m['content']}" for m in request.transcript])
         
+        quiz_info = ""
+        if request.quiz_results:
+            quiz_info = f"\nQUIZ RESULTS: {json.dumps(request.quiz_results)}"
+            
+        coding_info = ""
+        if request.coding_solution:
+            coding_info = f"\nCODING SOLUTION:\n{request.coding_solution}\nCODING RESULTS: {json.dumps(request.coding_results)}"
+
         # 2. Ask LLM to evaluate with Chain-of-Thought (CoT)
-        eval_prompt = f"""[INST] You are an Expert Technical Bar-Raiser. Evaluate this technical interview transcript to determine if the candidate meets the high standards for a Senior Engineer.
+        eval_prompt = f"""[INST] You are an Expert Technical Bar-Raiser. Evaluate this technical assessment to determine if the candidate meets the high standards for a Senior Engineer.
+
+ASSESSMENT DATA:{quiz_info}{coding_info}
+
+TRANSCRIPT:
+{transcript_text}
 
 **SCORING CRITERIA:**
 - PERFECT (9-10/10): Deep technical expertise, provides specific implementation details (tools, metrics, trade-offs), and handles advanced follow-ups with ease.
@@ -303,7 +408,8 @@ Output ONLY a valid JSON object in this format:
             
             if start_idx != -1:
                 json_str = eval_json_str[start_idx:end_idx+1]
-                evaluation = json.loads(json_str)
+                json_str = "".join(ch for ch in json_str if ch.isprintable() or ch in "\n\r\t")
+                evaluation = json.loads(json_str, strict=False)
             else:
                  raise ValueError("Could not find { in LLM output")
         except Exception as e:

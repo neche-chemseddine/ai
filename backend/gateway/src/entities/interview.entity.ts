@@ -23,6 +23,18 @@ export class Interview {
   @Column({ default: 'pending' })
   status: string; // pending, active, completed
 
+  @Column({ default: 'init' })
+  current_stage: string; // init, quiz, coding, chat, completed
+
+  @Column({ type: 'jsonb', nullable: true })
+  quiz_results: any;
+
+  @Column({ type: 'text', nullable: true })
+  coding_solution: string;
+
+  @Column({ type: 'jsonb', nullable: true })
+  coding_results: any;
+
   @Column({ default: 0 })
   question_count: number;
 

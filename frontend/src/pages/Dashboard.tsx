@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { interviewService } from '../services/interview.service';
 import { authService } from '../services/auth.service';
 import { 
@@ -56,6 +57,7 @@ import { ThemeToggle } from '@/components/theme-toggle';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 
 const Dashboard = () => {
+  const navigate = useNavigate();
   const [interviews, setInterviews] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [isUploading, setIsUploading] = useState(false);
@@ -367,16 +369,26 @@ const Dashboard = () => {
                             </Button>
                           )}
                           {interview.report_url && (
-                            <Button variant="ghost" asChild>
-                              <a 
-                                href={interviewService.getReportUrl(interview.report_url)}
-                                target="_blank"
-                                rel="noreferrer"
-                                title="Download Report"
+                            <>
+                              <Button 
+                                variant="ghost" 
+                                onClick={() => navigate(`/review/${interview.id}`)}
+                                title="Open Detailed Review"
+                                className="text-primary hover:text-primary hover:bg-primary/10"
                               >
-                                <FileText size={16} />
-                              </a>
-                            </Button>
+                                <LayoutDashboard size={16} />
+                              </Button>
+                              <Button variant="ghost" asChild>
+                                <a 
+                                  href={interviewService.getReportUrl(interview.report_url)}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  title="Download PDF"
+                                >
+                                  <FileText size={16} />
+                                </a>
+                              </Button>
+                            </>
                           )}
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
